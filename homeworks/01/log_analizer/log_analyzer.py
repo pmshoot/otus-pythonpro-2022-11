@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
-import collections
 import gzip
 import json
 import logging
 import os
 import re
 import sys
-import typing
 from datetime import datetime
 from pathlib import PurePath
+from string import Template
 
 # log_format ui_short '$remote_addr  $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
@@ -24,10 +23,12 @@ DEFAULT_CONFIG = {
     # 'ERRORS_THRESHOLD': None,
     }
 
+# const
 LOG_FORMAT = '[%(asctime)s] %(levelname).1s %(message)s'
 LOG_DATE_FORMAT = '%Y.%m.%d%H:%M:%S'
 LOG_FILE_DATE_FORMAT = '%Y%m%d'  # формат даты в наименовании файла обрабатываемого лога
 REPORT_FILE_DATE_FORMAT = '%Y.%m.%d'  # формат даты для имени файла отчета
+REPORT_FILE_NAME_TEMPLATE = 'report-%s.html'
 NGINX_LOG_FILE_RE = re.compile(r'nginx-access-ui\.log-([\d]+)(\.gz|\b)')
 ENCODING = 'UTF-8'
 
@@ -90,7 +91,17 @@ def get_last_log_data(config, logger) -> tuple:
     return fname, fdate, fext[1:] if fext else fext
 
 
-def get_mediana(data: list):
+def get_report_name(log_date: datetime) -> str:
+    """"""
+    return REPORT_FILE_NAME_TEMPLATE % log_date.strftime(REPORT_FILE_DATE_FORMAT)
+
+
+def report_exists(config: dict, report_name: str) -> bool:
+    """"""
+    return report_name in os.listdir(config['REPORT_DIR'])
+
+
+def get_median(data: list):
     """Расчет медианы выборки"""
     data = sorted(data)
     lcnt = len(data)
@@ -103,7 +114,7 @@ def get_mediana(data: list):
         return round(sum(data[half - 1: half + 1]) / 2, 3)
 
 
-def parse_log(config, logger, log_name, log_ext) -> tuple:
+def gen_parse_log(config, logger, log_name, log_date, log_ext) -> tuple:
     """Парсит лог nginx из файла, указанного в config. Возвращает генератор"""
     if not log_name:
         raise SystemExit('Не найден файл')
@@ -160,7 +171,7 @@ def parse_log(config, logger, log_name, log_ext) -> tuple:
         time_perc = round(time_sum / requests_time * 100, 2)  # суммарное время для url в процентах
         time_avg = round(time_sum / count, 3)  # среднее время
         time_max = max(data)  # максимальное время
-        time_med = get_mediana(data)  # медиана
+        time_med = get_median(data)  # медиана
         #
         stat_data = [count, count_perc, time_sum, time_perc, time_avg, time_max, time_med]
         logger.debug(f'calc stat {url} - in:{data} :: out:{stat_data}')
@@ -172,19 +183,32 @@ def parse_log(config, logger, log_name, log_ext) -> tuple:
             yield url, data
 
 
-def generate_report(config, logger, fdate, parsed_log):
+def generate_report(config: dict, logger: logging.Logger, parsed_log, log_name, log_date, _):
     """"""
-    for url, data in parsed_log:
-        print(url, data)
+    report_name = get_report_name(log_date)
+    if report_exists(config, report_name):
+        raise SystemExit(f"Отчет уже создан: {os.path.join(config['REPORT_DIR'], report_name)}")
+
+    with open('report.html', encoding=ENCODING) as fp:
+        templ = Template(fp.read())
+
+    table = json.dumps([1, 2, 3])
+    templ.safe_substitute(table_json=table)
+
+    report_path = os.path.join(config['REPORT_DIR'], report_name)
+    with open(report_path, 'w', encoding=ENCODING) as fp:
+        fp.write(templ.template)
+
+    logger.info(f'Создан отчет {report_path}')
 
 
 def main():
     try:
         config = get_config()
         logger = get_logger(config)
-        fname, fdate, fext = get_last_log_data(config, logger)
-        parsed_data = parse_log(config, logger, fname, fext)
-        generate_report(config, logger, fdate, parsed_data)
+        log_data = get_last_log_data(config, logger)
+        parsed_log = gen_parse_log(config, logger, *log_data)
+        generate_report(config, logger, parsed_log, *log_data)
 
     except SystemError as e:
         logger.error(e)
