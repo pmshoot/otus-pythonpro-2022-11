@@ -20,7 +20,7 @@ DEFAULT_CONFIG = {
     "REPORT_SIZE": 1000,
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log"
-    }
+}
 LOG_FORMAT = '[%(asctime)s] %(levelname).1s %(message)s'
 LOG_DATE_FORMAT = '%Y.%m.%d%H:%M:%S'
 NGINX_LOG_FILE_RE = re.compile(r'nginx-access-ui\.log-([\d]+)(\.gz|\b)')
@@ -86,24 +86,29 @@ def parse_log(config, logger, last_log) -> typing.Generator:
     reader = open if not log_ext else gzip.open
     log_name = PurePath(config.get('LOG_DIR')) / log_name
 
-    regex = re.compile(r'.*"(GET|POST|PUT|DELETE) (.*) HTTP.*" .* ([\d.]+)')
-    # regex = re.compile(r'([\d.]+) ([\s]+).*\[.*\] "(GET|POST) (.*) HTTP/.*" ([\d+]) ([\d+]) "" "" "" "" "" ([\d.]+)')
+    # regex = re.compile(r'.+"(GET|POST) (.+) HTTP.+ (\d{3}) (\d+) .+" ([\d.]+)', re.IGNORECASE)
+    regex = re.compile(r'.+"(?P<method>GET|POST) (?P<url>.+) HTTP.+ (?P<code>\d{3}) (?P<size>\d+) .+" (?P<time>[\d.]+)',
+                       re.IGNORECASE)
     requests_count = 0  # общее кол-во запросов
     counter = collections.Counter()
     with reader(log_name, 'r', encoding=ENCODING) as fp:
-        a = 1000
+        n = 1000
         for row in fp:
-            a -= 1
-            if not a:
+            if n == 0:
                 break
-            data = regex.findall(row)
-            print(row, data)
-            if not len(data):
-                continue
-            method, url, req_time = data[0]
-            # print(url, req_time)
+            n -= 1
+            data = regex.match(row)
+            # print(data.groupdict())
+            # print(row.rstrip())
+            # data = re.split(r'\s' ,row.rstrip())
+            # print(len(data), data)
+            # if not len(data):
+            #     continue
+            # method, url, req_time = data[0]
+            # # print(url, req_time)
             requests_count += 1
-            counter[url] += 1
+            counter[data['url']] += 1
+    print(counter, requests_count)
     return
     # yield 1
 

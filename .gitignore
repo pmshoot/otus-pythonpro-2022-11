@@ -129,5 +129,7 @@ dmypy.json
 .pyre/
 .idea/
 *.gz
+homeworks/01/log_analizer/log
+homeworks/01/log_analizer/config.json
 
 config.*
