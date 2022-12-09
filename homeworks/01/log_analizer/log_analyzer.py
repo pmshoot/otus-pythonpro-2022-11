@@ -21,9 +21,11 @@ DEFAULT_CONFIG = {
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
     # 'ERRORS_THRESHOLD': None,
-    }
+}
 
 # const
+# LOG_REGEX = r'.+"(?P<method>GET|POST) (?P<url>.+) HTTP.+ (?P<code>\d{3}) (?P<size>\d+) .+" (?P<time>[\d.]+)'
+LOG_REGEX = r'.+ ("(?P<method>[\w]+) (?P<url>.+) HTTP.+"|"0") (?P<code>\d{3}) (?P<size>\d+) .+" (?P<time>[\d.]+)'
 LOG_FORMAT = '[%(asctime)s] %(levelname).1s %(message)s'
 LOG_DATE_FORMAT = '%Y.%m.%d%H:%M:%S'
 LOG_FILE_DATE_FORMAT = '%Y%m%d'  # формат даты в наименовании файла обрабатываемого лога
@@ -117,10 +119,9 @@ def get_median(data: list):
 def gen_parse_log(config, logger, log_name, log_date, log_ext) -> tuple:
     """Парсит лог nginx из файла, указанного в config. Возвращает генератор"""
     if not log_name:
-        raise SystemExit('Не найден файл')
+        raise SystemExit('Не найден файл лога')
 
-    regex = re.compile(r'.+"(?P<method>GE|POST) (?P<url>.+) HTTP.+ (?P<code>\d{3}) (?P<size>\d+) .+" (?P<time>[\d.]+)',
-                       re.IGNORECASE)
+    regex = re.compile(LOG_REGEX, re.IGNORECASE)
     log_name = PurePath(config.get('LOG_DIR')) / log_name
     requests_count = 0  # общее кол-во запросов
     requests_time = 0  # суммарное время всех запросов
@@ -128,23 +129,20 @@ def gen_parse_log(config, logger, log_name, log_date, log_ext) -> tuple:
     result = {}
     reader = open if not log_ext else gzip.open
 
-    with reader(log_name, 'r', encoding=ENCODING) as fp:
-        n = 1000
+    with reader(log_name, 'rb') as fp:
         for row in fp:
-            if n == 0:
-                break
-            n -= 1
-
-            matched = regex.match(row)
+            line = row.decode(encoding=ENCODING)
+            matched = regex.match(line)
             if matched:
                 parsed_data = matched.groupdict()
                 data = result.setdefault(parsed_data['url'], [])
                 url_request_time = float(parsed_data['time'])
                 requests_time += url_request_time
                 data.append(url_request_time)
+                logger.debug(parsed_data)
             else:
                 # считаем ошибка парсинга
-                logger.error(f'Ошибка разбора: {row}')
+                logger.error(f'Ошибка разбора: {line}')
                 parsing_error_count += 1
 
             requests_count += 1
@@ -165,22 +163,27 @@ def gen_parse_log(config, logger, log_name, log_date, log_ext) -> tuple:
 
     # расчет статистики по url
     for url, data in result.items():
-        count = len(data)  # количество фиксаций
-        count_perc = round(count / requests_count * 100, 2)  # процент от общего количества
-        time_sum = round(sum(data), 3)  # суммарное время для url
-        time_perc = round(time_sum / requests_time * 100, 2)  # суммарное время для url в процентах
-        time_avg = round(time_sum / count, 3)  # среднее время
-        time_max = max(data)  # максимальное время
-        time_med = get_median(data)  # медиана
+        stat_map = {}
+        _count = len(data)  # количество фиксаций
+        stat_map['count'] = _count
+        stat_map['count_perc'] = _count / requests_count * 100  # процент от общего количества
+        _time_sum = sum(data)  # суммарное время для url
+        stat_map['time_sum'] = _time_sum
+        stat_map['time_perc'] = _time_sum / requests_time * 100  # суммарное время для url в процентах
+        stat_map['time_avg'] = _time_sum / _count  # среднее время
+        stat_map['time_max'] = max(data)  # максимальное время
+        stat_map['time_med'] = get_median(data)  # медиана
         #
-        stat_data = [count, count_perc, time_sum, time_perc, time_avg, time_max, time_med]
-        logger.debug(f'calc stat {url} - in:{data} :: out:{stat_data}')
-        result[url] = stat_data
+        logger.debug(f'calc stat {url} - in:{data} :: out:{stat_map}')
+        result[url] = stat_map
 
     # выдача данных
-    for url, data in result.items():
-        if data[6] > 10:
-            yield url, data
+    pushed = 0
+    data_list = sorted(result.items(), key=lambda t: t[1]['time_sum'])
+    for url, data in data_list:
+        if pushed > config['REPORT_SIZE']:
+            raise StopIteration
+        yield {'url': url, **stat_map}
 
 
 def generate_report(config: dict, logger: logging.Logger, parsed_log, log_name, log_date, _):
@@ -192,12 +195,12 @@ def generate_report(config: dict, logger: logging.Logger, parsed_log, log_name, 
     with open('report.html', encoding=ENCODING) as fp:
         templ = Template(fp.read())
 
-    table = json.dumps([1, 2, 3])
+    table = json.dumps([m for m in parsed_log])
     templ.safe_substitute(table_json=table)
 
     report_path = os.path.join(config['REPORT_DIR'], report_name)
     with open(report_path, 'w', encoding=ENCODING) as fp:
-        fp.write(templ.template)
+        fp.write(templ.safe_substitute(table_json=table))
 
     logger.info(f'Создан отчет {report_path}')
 
