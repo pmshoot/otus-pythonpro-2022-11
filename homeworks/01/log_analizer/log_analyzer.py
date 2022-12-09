@@ -32,7 +32,7 @@ LOG_DATE_FORMAT = '%Y.%m.%d%H:%M:%S'
 LOG_FILE_DATE_FORMAT = '%Y%m%d'  # формат даты в наименовании файла обрабатываемого лога
 REPORT_FILE_DATE_FORMAT = '%Y.%m.%d'  # формат даты для имени файла отчета
 REPORT_FILE_NAME_TEMPLATE = 'report-%s.html'
-NGINX_LOG_FILE_RE = re.compile(r'nginx-access-ui\.log-([\d]+)(\.gz|\b)')
+NGINX_LOG_FILE_RE = re.compile(r'nginx-access-ui\.log-([\d]{8})(\.gz|\b)')
 ENCODING = 'UTF-8'
 
 
@@ -50,7 +50,6 @@ def get_config() -> dict:
         # читаем, парсим конфиг файл и обновляем конфиг данными из файла
         with open(args.config, encoding=ENCODING) as fp:
             config.update(json.load(fp))
-
     #
     if 'ERROR_THRESHOLD' in config:
         et = config.get('ERROR_THRESHOLD')
@@ -63,44 +62,24 @@ def get_config() -> dict:
     return config
 
 
-def get_logger(config):
-    """Logger"""
-    loglevel = config.get('LOGLEVEL', 'INFO')
-    logfile = config.get('LOGFILE', None)
-    logging.basicConfig(format=LOG_FORMAT, datefmt=LOG_DATE_FORMAT, filename=logfile, level=loglevel)
-    logger = logging.getLogger(__name__)
-    return logger
-
-
-def get_last_log_data(config, logger) -> tuple:
+def get_last_log_data(config: dict) -> namedtuple:
     """"""
-    logdir = config.get('LOG_DIR')
+    log_dir = config.get('LOG_DIR')
     log_name, log_date, log_ext = None, None, None
 
-    for fn in os.listdir(logdir):
+    for fn in os.listdir(log_dir):
         if NGINX_LOG_FILE_RE.fullmatch(fn):
             fd, fe = NGINX_LOG_FILE_RE.findall(fn)[0]
             if log_date is None or fd > log_date:
                 log_name, log_date, log_ext = fn, fd, fe  # фиксируем лог с крайней датой
 
     if not log_name:
-        raise SystemExit('Не найден файл лога')
-    logger.info(f'Найден файл {log_name}')
+        raise SystemExit(f'Не найден файл лога в {log_dir}')
 
     fdate = datetime.strptime(log_date, LOG_FILE_DATE_FORMAT)  # convert to datetime
     log_data = namedtuple('log_data', 'log_name log_date log_ext')(log_name, fdate, log_ext)
 
     return log_data
-
-
-def get_report_name(log_date: datetime) -> str:
-    """"""
-    return REPORT_FILE_NAME_TEMPLATE % log_date.strftime(REPORT_FILE_DATE_FORMAT)
-
-
-def report_exists(config: dict, report_name: str) -> bool:
-    """"""
-    return report_name in os.listdir(config['REPORT_DIR'])
 
 
 def get_median(data: list):
@@ -123,20 +102,22 @@ def gen_parse_log(config, logger, log_data):
     requests_count = 0  # общее кол-во запросов
     requests_time = 0  # суммарное время всех запросов
     parsing_error_count = 0  # счетчик ошибок парсинга
-    result = {}
+    parsed_data = {}
     reader = open if not log_data.log_ext else gzip.open
 
+    # парсинг лога по regex
+    logger.info(f'Разбор файла {log_name}')
     with reader(log_name, 'rb') as fp:
         for row in fp:
             line = row.decode(encoding=ENCODING)
             matched = regex.match(line)
             if matched:
-                parsed_data = matched.groupdict()
-                data = result.setdefault(parsed_data['url'], [])
-                url_request_time = float(parsed_data['time'])
+                row_data = matched.groupdict()
+                data = parsed_data.setdefault(row_data['url'], [])
+                url_request_time = float(row_data['time'])
                 requests_time += url_request_time
                 data.append(url_request_time)
-                logger.debug(parsed_data)
+                logger.debug(row_data)
             else:
                 # считаем ошибка парсинга
                 logger.error(f'Ошибка разбора: {line}')
@@ -146,69 +127,94 @@ def gen_parse_log(config, logger, log_data):
 
     # проверка количества записей
     if requests_count == 0 and parsing_error_count == 0:
-        raise SystemError(f'Лог-файл {log_name} найдено строк: {requests_count}')
+        raise SystemError(
+            f'Ошибка парсинга или пустой лог-файл {log_name}, найдено строк: {requests_count}, ошибок: {parsing_error_count}')
 
     logger.info(f'Обработано строк: {requests_count}')
 
     # проверка разбора на ошибки
     if parsing_error_count > 0:
-        logger.info(f'Ошибок разбора: {parsing_error_count}')
+        logger.info(f'Ошибок при разборе: {parsing_error_count}')
     err_perc = parsing_error_count / requests_count  # % ошибок
     error_threshold = config.get('ERROR_THRESHOLD', None)
     if error_threshold and err_perc > error_threshold:
         raise SystemError(f'Превышен порог допустимого количества ошибок при разборе в {error_threshold * 100}%!')
 
-    # расчет статистики по url
-    for url, data in result.items():
+    return calculate_stat(config, logger, parsed_data, requests_count, requests_time)
+
+
+def calculate_stat(config, logger, parsed_map, requests_count, requests_time) -> dict:
+    """Расчет статистики по url'ам"""
+    logger.info('Расчет статистики по url')
+    for url, data in parsed_map.items():
         stat_map = {}
         _count = len(data)  # количество фиксаций
         stat_map['count'] = _count
-        stat_map['count_perc'] = _count / requests_count * 100  # процент от общего количества
-        _time_sum = sum(data)  # суммарное время для url
+        stat_map['count_perc'] = round(_count / requests_count * 100, 3)  # процент от общего количества
+        _time_sum = round(sum(data), 3)  # суммарное время для url
         stat_map['time_sum'] = _time_sum
-        stat_map['time_perc'] = _time_sum / requests_time * 100  # суммарное время для url в процентах
-        stat_map['time_avg'] = _time_sum / _count  # среднее время
+        stat_map['time_perc'] = round(_time_sum / requests_time * 100, 3)  # суммарное время для url в процентах
+        stat_map['time_avg'] = round(_time_sum / _count, 3)  # среднее время
         stat_map['time_max'] = max(data)  # максимальное время
         stat_map['time_med'] = get_median(data)  # медиана
         #
         logger.debug(f'calc stat {url} - in:{data} :: out:{stat_map}')
-        result[url] = stat_map
+        parsed_map[url] = stat_map
 
-    # выдача данных
-    pushed = 0
-    data_list = sorted(result.items(), key=lambda t: t[1]['time_sum'])
-    for url, data in data_list:
-        if pushed > config['REPORT_SIZE']:
-            raise StopIteration
-        yield {'url': url, **stat_map}
+    return gen_report_data(config, logger, parsed_map)
 
 
-def generate_report(config: dict, logger: logging.Logger, parsed_log, log_data):
+def gen_report_data(config, logger, parsed_map) -> dict:
+    """Подготовка данных по url'ам для генерации отчета"""
+    # выдача отсортированных данных по time_sum в количестве REPORT_SIZE
+    given = 0
+    data_list = sorted(parsed_map.items(), key=lambda t: t[1]['time_sum'])
+    # data_list = result.items()
+    for url, data in reversed(data_list):  # сортировка по-убыванию
+        # for url, data in data_list:  # сортировка по-возрастанию
+        if given >= config['REPORT_SIZE']:
+            break
+
+        yield {'url': url, **data}
+
+        given += 1
+    logger.info(f'Сгенерировано строк данных в отчет: {given}')
+
+
+def generate_report(config: dict, logger: logging.Logger, parsed_log: dict, log_data: namedtuple):
     """"""
-    report_name = get_report_name(log_data.log_date)
-    if report_exists(config, report_name):
+    report_name = REPORT_FILE_NAME_TEMPLATE % log_data.log_date.strftime(REPORT_FILE_DATE_FORMAT)
+
+    # проверка на наличие отчета на определенную логом дату
+    if report_name in os.listdir(config['REPORT_DIR']):
         raise SystemExit(f"Отчет уже создан: {os.path.join(config['REPORT_DIR'], report_name)}")
 
     with open('report.html', encoding=ENCODING) as fp:
         templ = Template(fp.read())
 
-    table = json.dumps([m for m in parsed_log])
+    # запуск процесса формирования данных для отчета и сериализуем в json
+    table = json.dumps([m for m in parsed_log], indent=2)
     templ.safe_substitute(table_json=table)
 
     report_path = os.path.join(config['REPORT_DIR'], report_name)
     with open(report_path, 'w', encoding=ENCODING) as fp:
         fp.write(templ.safe_substitute(table_json=table))
 
-    logger.info(f'Создан отчет {report_path}')
+    logger.info(f'Сформирован отчет {report_path}')
 
 
 def main():
     try:
         config = get_config()
-        logger = get_logger(config)
-        log_data = get_last_log_data(config, logger)
-        parsed_log = gen_parse_log(config, logger, log_data)
-        generate_report(config, logger, parsed_log, log_data)
+        # set logger
+        loglevel = config.get('LOGLEVEL', 'INFO')
+        logfile = config.get('LOGFILE', None)
+        logging.basicConfig(format=LOG_FORMAT, datefmt=LOG_DATE_FORMAT, filename=logfile, level=loglevel)
+        logger = logging.getLogger(__name__)
+
+        log_data = get_last_log_data(config)  # поиск последнего лога
+        parsed_log = gen_parse_log(config, logger, log_data)  # разбор данных лога и подготовка данных для отчета
+        generate_report(config, logger, parsed_log, log_data)  # формирование отчета
 
     except SystemError as e:
         logger.error(e)
