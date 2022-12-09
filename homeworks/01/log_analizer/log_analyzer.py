@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sys
+from collections import namedtuple
 from datetime import datetime
 from pathlib import PurePath
 from string import Template
@@ -80,17 +81,22 @@ def get_logger(config):
 def get_last_log_data(config, logger) -> tuple:
     """"""
     logdir = config.get('LOG_DIR')
-    fname, fdate, fext = None, None, None
+    log_name, log_date, log_ext = None, None, None
 
     for fn in os.listdir(logdir):
         if NGINX_LOG_FILE_RE.fullmatch(fn):
             fd, fe = NGINX_LOG_FILE_RE.findall(fn)[0]
-            if fdate is None or fd > fdate:
-                fname, fdate, fext = fn, fd, fe  # фиксируем лог с крайней датой
+            if log_date is None or fd > log_date:
+                log_name, log_date, log_ext = fn, fd, fe  # фиксируем лог с крайней датой
 
-    fdate = datetime.strptime(fdate, LOG_FILE_DATE_FORMAT)  # convert to datetime
+    if not log_name:
+        raise SystemExit('Не найден файл лога')
+    logger.info(f'Найден файл {log_name}')
 
-    return fname, fdate, fext[1:] if fext else fext
+    fdate = datetime.strptime(log_date, LOG_FILE_DATE_FORMAT)  # convert to datetime
+    log_data = namedtuple('log_data', 'log_name log_date log_ext')(log_name, fdate, log_ext)
+
+    return log_data
 
 
 def get_report_name(log_date: datetime) -> str:
@@ -116,18 +122,15 @@ def get_median(data: list):
         return round(sum(data[half - 1: half + 1]) / 2, 3)
 
 
-def gen_parse_log(config, logger, log_name, log_date, log_ext) -> tuple:
+def gen_parse_log(config, logger, log_data):
     """Парсит лог nginx из файла, указанного в config. Возвращает генератор"""
-    if not log_name:
-        raise SystemExit('Не найден файл лога')
-
     regex = re.compile(LOG_REGEX, re.IGNORECASE)
-    log_name = PurePath(config.get('LOG_DIR')) / log_name
+    log_name = PurePath(config.get('LOG_DIR')) / log_data.log_name
     requests_count = 0  # общее кол-во запросов
     requests_time = 0  # суммарное время всех запросов
     parsing_error_count = 0  # счетчик ошибок парсинга
     result = {}
-    reader = open if not log_ext else gzip.open
+    reader = open if not log_data.log_ext else gzip.open
 
     with reader(log_name, 'rb') as fp:
         for row in fp:
@@ -186,9 +189,9 @@ def gen_parse_log(config, logger, log_name, log_date, log_ext) -> tuple:
         yield {'url': url, **stat_map}
 
 
-def generate_report(config: dict, logger: logging.Logger, parsed_log, log_name, log_date, _):
+def generate_report(config: dict, logger: logging.Logger, parsed_log, log_data):
     """"""
-    report_name = get_report_name(log_date)
+    report_name = get_report_name(log_data.log_date)
     if report_exists(config, report_name):
         raise SystemExit(f"Отчет уже создан: {os.path.join(config['REPORT_DIR'], report_name)}")
 
@@ -210,8 +213,8 @@ def main():
         config = get_config()
         logger = get_logger(config)
         log_data = get_last_log_data(config, logger)
-        parsed_log = gen_parse_log(config, logger, *log_data)
-        generate_report(config, logger, parsed_log, *log_data)
+        parsed_log = gen_parse_log(config, logger, log_data)
+        generate_report(config, logger, parsed_log, log_data)
 
     except SystemError as e:
         logger.error(e)
