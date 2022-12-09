@@ -36,25 +36,19 @@ NGINX_LOG_FILE_RE = re.compile(r'nginx-access-ui\.log-([\d]+)(\.gz|\b)')
 ENCODING = 'UTF-8'
 
 
-def parse_args():
-    """Парсит аргументы командной строки"""
-    parser = argparse.ArgumentParser(prog='log_analizer.py')
-    parser.add_argument("--config", dest='config', default=None, help="Файл конфигурации json")
-
-    return parser.parse_args()
-
-
 def get_config() -> dict:
     """Возвращает данные конфигурации скрипта"""
     # конфигурация по дефолту
     config = DEFAULT_CONFIG
 
     # аргументы командной строки в dict
-    args = parse_args()
+    parser = argparse.ArgumentParser(prog='log_analizer.py')
+    parser.add_argument("--config", dest='config', default=None, help="Файл конфигурации json")
+    args = parser.parse_args()
 
     if args.config:
         # читаем, парсим конфиг файл и обновляем конфиг данными из файла
-        with open(args.config) as fp:
+        with open(args.config, encoding=ENCODING) as fp:
             config.update(json.load(fp))
 
     #
