@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sys
+import typing
 from collections import namedtuple
 from datetime import datetime
 from pathlib import PurePath
@@ -25,8 +26,7 @@ DEFAULT_CONFIG = {
 }
 
 # const
-# LOG_REGEX = r'.+"(?P<method>GET|POST) (?P<url>.+) HTTP.+ (?P<code>\d{3}) (?P<size>\d+) .+" (?P<time>[\d.]+)'
-LOG_REGEX = r'.+ ("(?P<method>[\w]+) (?P<url>.+) HTTP.+"|"0") (?P<code>\d{3}) (?P<size>\d+) .+" (?P<time>[\d.]+)'
+LOG_REGEX = re.compile(r'.+ ".+ (?P<url>/.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
 LOG_FORMAT = '[%(asctime)s] %(levelname).1s %(message)s'
 LOG_DATE_FORMAT = '%Y.%m.%d%H:%M:%S'
 LOG_FILE_DATE_FORMAT = '%Y%m%d'  # формат даты в наименовании файла обрабатываемого лога
@@ -36,11 +36,11 @@ NGINX_LOG_FILE_RE = re.compile(r'nginx-access-ui\.log-([\d]{8})(\.gz|\b)')
 ENCODING = 'UTF-8'
 
 
-def get_config() -> dict:
+def get_config(config=None) -> dict:
     """Возвращает данные конфигурации скрипта"""
     # конфигурация по дефолту
-    config = DEFAULT_CONFIG
-
+    if config is None:
+        config = DEFAULT_CONFIG
     # аргументы командной строки в dict
     parser = argparse.ArgumentParser(prog='log_analizer.py')
     parser.add_argument("--config", dest='config', default=None, help="Файл конфигурации json")
@@ -48,16 +48,19 @@ def get_config() -> dict:
 
     if args.config:
         # читаем, парсим конфиг файл и обновляем конфиг данными из файла
-        with open(args.config, encoding=ENCODING) as fp:
-            config.update(json.load(fp))
+        try:
+            with open(args.config, encoding=ENCODING) as fp:
+                config.update(json.load(fp))
+        except (FileNotFoundError, FileExistsError) as e:
+            raise SystemError(e)
     #
-    if 'ERROR_THRESHOLD' in config:
-        et = config.get('ERROR_THRESHOLD')
-        if et.endswith('%'):
-            et = int(et[:-1]) / 100
+    if 'ERRORS_THRESHOLD' in config:
+        et = config.get('ERRORS_THRESHOLD')
+        if isinstance(et, str) and et.endswith('%'):
+            et = float(et[:-1]) / 100
         else:
             et = float(et)
-        config['ERROR_THRESHOLD'] = et
+        config['ERRORS_THRESHOLD'] = et
 
     return config
 
@@ -82,7 +85,7 @@ def get_last_log_data(config: dict) -> namedtuple:
     return log_data
 
 
-def get_median(data: list):
+def get_median(data: list) -> typing.Union[int, float]:
     """Расчет медианы выборки"""
     data = sorted(data)
     lcnt = len(data)
@@ -95,9 +98,8 @@ def get_median(data: list):
         return round(sum(data[half - 1: half + 1]) / 2, 3)
 
 
-def gen_parse_log(config, logger, log_data):
-    """Парсит лог nginx из файла, указанного в config. Возвращает генератор"""
-    regex = re.compile(LOG_REGEX, re.IGNORECASE)
+def parse_log(config: dict, logger: logging.Logger, log_data: namedtuple) -> tuple[dict, int, int]:
+    """Парсит лог nginx из файла, указанного в config"""
     log_name = PurePath(config.get('LOG_DIR')) / log_data.log_name
     requests_count = 0  # общее кол-во запросов
     requests_time = 0  # суммарное время всех запросов
@@ -110,7 +112,7 @@ def gen_parse_log(config, logger, log_data):
     with reader(log_name, 'rb') as fp:
         for row in fp:
             line = row.decode(encoding=ENCODING)
-            matched = regex.match(line)
+            matched = LOG_REGEX.match(line)
             if matched:
                 row_data = matched.groupdict()
                 data = parsed_data.setdefault(row_data['url'], [])
@@ -136,11 +138,11 @@ def gen_parse_log(config, logger, log_data):
     if parsing_error_count > 0:
         logger.info(f'Ошибок при разборе: {parsing_error_count}')
     err_perc = parsing_error_count / requests_count  # % ошибок
-    error_threshold = config.get('ERROR_THRESHOLD', None)
+    error_threshold = config.get('ERRORS_THRESHOLD', None)
     if error_threshold and err_perc > error_threshold:
         raise SystemError(f'Превышен порог допустимого количества ошибок при разборе в {error_threshold * 100}%!')
 
-    return calculate_stat(config, logger, parsed_data, requests_count, requests_time)
+    return parsed_data, requests_count, requests_time
 
 
 def calculate_stat(config, logger, parsed_map, requests_count, requests_time) -> dict:
@@ -161,7 +163,7 @@ def calculate_stat(config, logger, parsed_map, requests_count, requests_time) ->
         logger.debug(f'calc stat {url} - in:{data} :: out:{stat_map}')
         parsed_map[url] = stat_map
 
-    return gen_report_data(config, logger, parsed_map)
+    return parsed_map
 
 
 def gen_report_data(config, logger, parsed_map) -> dict:
@@ -213,8 +215,10 @@ def main():
         logger = logging.getLogger(__name__)
 
         log_data = get_last_log_data(config)  # поиск последнего лога
-        parsed_log = gen_parse_log(config, logger, log_data)  # разбор данных лога и подготовка данных для отчета
-        generate_report(config, logger, parsed_log, log_data)  # формирование отчета
+        parsed_log_data = parse_log(config, logger, log_data)  # разбор данных лога и подготовка данных для отчета
+        stat = calculate_stat(config, logger, *parsed_log_data)  # подсчет статистики
+        report_data = gen_report_data(config, logger, stat)  # генератор данных для отчета
+        generate_report(config, logger, report_data, log_data)  # формирование отчета
 
     except SystemError as e:
         logger.error(e)
