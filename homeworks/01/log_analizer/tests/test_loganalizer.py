@@ -11,7 +11,10 @@ import typing
 import unittest
 from collections import namedtuple
 
-from log_analyzer import DEFAULT_CONFIG, ENCODING, REPORT_FILE_DATE_FORMAT, REPORT_FILE_NAME_TEMPLATE, calculate_stat, \
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from loganalizer.loganalizer import DEFAULT_CONFIG, ENCODING, REPORT_FILE_DATE_FORMAT, REPORT_FILE_NAME_TEMPLATE, \
+    calculate_stat, \
     gen_report_data, \
     generate_report, get_config, \
     get_last_log_data, \
@@ -54,10 +57,10 @@ class TestLogAnalizer(unittest.TestCase):
             19.486,
         )
         fixtures = [
-            ({'LOG_DIR': 'tests/log'}, False),
-            ({'LOG_DIR': 'tests/log_gz'}, False),
-            ({'LOG_DIR': 'tests/log', 'ERRORS_THRESHOLD': '5%'}, True),
-            ({'LOG_DIR': 'tests/log_gz', 'ERRORS_THRESHOLD': 0.05}, True),
+            ({'LOG_DIR': 'log'}, False),
+            ({'LOG_DIR': 'log_gz'}, False),
+            ({'LOG_DIR': 'log', 'ERRORS_THRESHOLD': '5%'}, True),
+            ({'LOG_DIR': 'log_gz', 'ERRORS_THRESHOLD': 0.05}, True),
         ]
 
         for conf, has_error in fixtures:
@@ -97,7 +100,7 @@ class TestLogAnalizer(unittest.TestCase):
             '/api/v2/target/12988/list?status=1': {'count': 3, 'count_perc': 10.714, 'time_sum': 0.011,
                                                    'time_perc': 0.056, 'time_avg': 0.004, 'time_max': 0.005,
                                                    'time_med': 0.003}}
-        config = get_config({'LOG_DIR': 'tests/log'})
+        config = get_config({'LOG_DIR': 'log'})
         log_data = get_last_log_data(config)
         parsed_data = parse_log(config, logger, log_data)
         stat = calculate_stat(config, logger, *parsed_data)
@@ -106,9 +109,9 @@ class TestLogAnalizer(unittest.TestCase):
 
     def test_gen_report_data(self):
         fixtures = (
-            ({'LOG_DIR': 'tests/log', 'REPORT_SIZE': 30}, 8, False),
-            ({'LOG_DIR': 'tests/log', 'REPORT_SIZE': 5}, 5, False),
-            ({'LOG_DIR': 'tests/log', 'REPORT_SIZE': 1}, 1, False),
+            ({'LOG_DIR': 'log', 'REPORT_SIZE': 30}, 8, False),
+            ({'LOG_DIR': 'log', 'REPORT_SIZE': 5}, 5, False),
+            ({'LOG_DIR': 'log', 'REPORT_SIZE': 1}, 1, False),
         )
 
         for conf_data, length, err_exp in fixtures:
@@ -126,7 +129,7 @@ class TestLogAnalizer(unittest.TestCase):
 
     def test_generate_report(self):
         fixtures = (
-            {'LOG_DIR': 'tests/log', 'REPORT_SIZE': 100},
+            {'LOG_DIR': 'log', 'REPORT_SIZE': 100},
         )
         with tempfile.TemporaryDirectory(prefix='test_') as tmpdir:
             for conf_data in fixtures:
@@ -149,12 +152,12 @@ class TestLogAnalizer(unittest.TestCase):
                     generate_report(config, logger, result, log_data)
 
     def test_log_regex(self):
-        # todo сократить поиск полей до url, size
-        regex = re.compile(r'.+ ".+ (?P<url>/.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
+        regex = re.compile(r'.+\[.+\] "\w+ (?P<url>/?.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
+        # regex = re.compile(r'.+ ".+ (?P<url>/.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
         configs = [
-            ({'LOG_DIR': 'tests/log'}, open),
-            ({'LOG_DIR': 'tests/log_empty'}, open),
-            ({'LOG_DIR': 'tests/log_gz'}, gzip.open),
+            ({'LOG_DIR': 'log'}, open),
+            ({'LOG_DIR': 'log_empty'}, open),
+            ({'LOG_DIR': 'log_gz'}, gzip.open),
         ]
 
         for config, rdr in configs:
@@ -298,3 +301,7 @@ class TestLogAnalizer(unittest.TestCase):
                 self.assertIsInstance(result, tuple)
                 d = namedtuple('log_data', 'log_name log_date log_ext')(fn, dt, ex)
                 self.assertEqual(result, d)
+
+
+if __name__ == '__main__':
+    unittest.main()

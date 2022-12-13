@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
 }
 
 # const
-LOG_REGEX = re.compile(r'.+ ".+ (?P<url>/.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
+LOG_REGEX = re.compile(r'.+\[.+\] "\w+ (?P<url>/?.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
 LOG_FORMAT = '[%(asctime)s] %(levelname).1s %(message)s'
 LOG_DATE_FORMAT = '%Y.%m.%d%H:%M:%S'
 LOG_FILE_DATE_FORMAT = '%Y%m%d'  # формат даты в наименовании файла обрабатываемого лога
@@ -191,7 +191,7 @@ def generate_report(config: dict, logger: logging.Logger, parsed_log: dict, log_
     if report_name in os.listdir(config['REPORT_DIR']):
         raise SystemExit(f"Отчет уже создан: {os.path.join(config['REPORT_DIR'], report_name)}")
 
-    with open('report.html', encoding=ENCODING) as fp:
+    with open(os.path.join(os.path.dirname(__file__), 'report.html'), encoding=ENCODING) as fp:
         templ = Template(fp.read())
 
     # запуск процесса формирования данных для отчета и сериализуем в json
