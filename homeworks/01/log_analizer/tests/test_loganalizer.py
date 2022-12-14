@@ -13,12 +13,11 @@ from collections import namedtuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from loganalizer.loganalizer import DEFAULT_CONFIG, ENCODING, REPORT_FILE_DATE_FORMAT, REPORT_FILE_NAME_TEMPLATE, \
-    calculate_stat, \
+from loganalizer.loganalizer import DEFAULT_CONFIG, ENCODING, calculate_stat, \
     gen_report_data, \
     generate_report, get_config, \
     get_last_log_data, \
-    get_median, parse_log
+    get_median, parse_log, get_report_name, report_exists
 
 logging.basicConfig(level=logging.CRITICAL)
 logger = logging.getLogger(__name__)
@@ -137,6 +136,10 @@ class TestLogAnalizer(unittest.TestCase):
                 config = get_config(conf_data)
 
                 log_data = get_last_log_data(config)
+
+                # нет отчета
+                self.assertFalse(report_exists(config, log_data))
+
                 parsed_data = parse_log(config, logger, log_data)
                 stat = calculate_stat(config, logger, *parsed_data)
                 result = gen_report_data(config, logger, stat)
@@ -145,11 +148,11 @@ class TestLogAnalizer(unittest.TestCase):
 
                 listing = os.listdir(tmpdir)
                 self.assertEqual(len(listing), 1)
-                report_name = REPORT_FILE_NAME_TEMPLATE % log_data.log_date.strftime(REPORT_FILE_DATE_FORMAT)
+                report_name = get_report_name(log_data)
                 self.assertEqual(report_name, listing[0])
 
-                with self.assertRaises(SystemExit):
-                    generate_report(config, logger, result, log_data)
+                # уже есть отчет
+                self.assertTrue(report_exists(config, log_data))
 
     def test_log_regex(self):
         regex = re.compile(r'.+\[.+\] "\w+ (?P<url>/?.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)

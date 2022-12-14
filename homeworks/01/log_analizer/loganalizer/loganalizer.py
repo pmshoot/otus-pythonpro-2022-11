@@ -85,6 +85,16 @@ def get_last_log_data(config: dict) -> namedtuple:
     return log_data
 
 
+def get_report_name(log_data: namedtuple):
+    return REPORT_FILE_NAME_TEMPLATE % log_data.log_date.strftime(REPORT_FILE_DATE_FORMAT)
+
+
+def report_exists(config, log_data) -> bool:
+    """Проверка на наличие отчета на определенную логом дату"""
+    report_name = get_report_name(log_data)
+    return report_name in os.listdir(config['REPORT_DIR'])
+
+
 def get_median(data: list) -> typing.Union[int, float]:
     """Расчет медианы выборки"""
     data = sorted(data)
@@ -185,11 +195,7 @@ def gen_report_data(config, logger, parsed_map) -> dict:
 
 def generate_report(config: dict, logger: logging.Logger, parsed_log: dict, log_data: namedtuple):
     """"""
-    report_name = REPORT_FILE_NAME_TEMPLATE % log_data.log_date.strftime(REPORT_FILE_DATE_FORMAT)
-
-    # проверка на наличие отчета на определенную логом дату
-    if report_name in os.listdir(config['REPORT_DIR']):
-        raise SystemExit(f"Отчет уже создан: {os.path.join(config['REPORT_DIR'], report_name)}")
+    report_name = get_report_name(log_data)
 
     with open(os.path.join(os.path.dirname(__file__), 'report.html'), encoding=ENCODING) as fp:
         templ = Template(fp.read())
@@ -215,6 +221,10 @@ def main():
         logger = logging.getLogger(__name__)
 
         log_data = get_last_log_data(config)  # поиск последнего лога
+
+        if report_exists(config, log_data):  # выходим, если отчет на определенную дату уже существует
+            raise SystemExit(f"Отчет уже создан: {os.path.join(config['REPORT_DIR'], get_report_name(log_data))}")
+
         parsed_log_data = parse_log(config, logger, log_data)  # разбор данных лога и подготовка данных для отчета
         stat = calculate_stat(config, logger, *parsed_log_data)  # подсчет статистики
         report_data = gen_report_data(config, logger, stat)  # генератор данных для отчета
@@ -222,13 +232,14 @@ def main():
 
     except SystemError as e:
         logger.error(e)
+        sys.exit(1)
 
     except SystemExit as e:
         logger.info(e)
 
     except Exception as e:
         logging.exception(e)
-        sys.exit(1)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
