@@ -11,13 +11,10 @@ import typing
 import unittest
 from collections import namedtuple
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from loganalizer.loganalizer import DEFAULT_CONFIG, ENCODING, calculate_stat, \
-    gen_report_data, \
-    generate_report, get_config, \
-    get_last_log_data, \
-    get_median, parse_log, get_report_name, report_exists
+from homeworks.lesson01.log_analizer.loganalizer.loganalizer import (DEFAULT_CONFIG, ENCODING, calculate_stat,
+                                                                     gen_report_data, generate_report, get_config,
+                                                                     get_last_log_data, get_median, get_report_name,
+                                                                     parse_log, report_exists)
 
 logging.basicConfig(level=logging.CRITICAL)
 logger = logging.getLogger(__name__)
