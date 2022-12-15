@@ -128,9 +128,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .idea/
-*.gz
-homeworks/01/log_analizer/loganalizer/log
-homeworks/01/log_analizer/loganalizer/config.json
+
+homeworks/lesson01/log_analizer/loganalizer/log
+homeworks/lesson01/log_analizer/loganalizer/config.json
 
 config.json
 
+!/homeworks/lesson01/log_analizer/tests/log_gz/nginx-access-ui.log-20150630.gz

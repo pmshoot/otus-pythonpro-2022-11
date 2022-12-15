@@ -97,7 +97,7 @@ class TestLogAnalizer(unittest.TestCase):
             '/api/v2/target/12988/list?status=1': {'count': 3, 'count_perc': 10.714, 'time_sum': 0.011,
                                                    'time_perc': 0.056, 'time_avg': 0.004, 'time_max': 0.005,
                                                    'time_med': 0.003}}
-        config = get_config({'LOG_DIR': 'log'})
+        config = get_config({'LOG_DIR': f'{self.dirname}/log'})
         log_data = get_last_log_data(config)
         parsed_data = parse_log(config, logger, log_data)
         stat = calculate_stat(config, logger, *parsed_data)
