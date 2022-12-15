@@ -11,13 +11,10 @@ import typing
 import unittest
 from collections import namedtuple
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from loganalizer.loganalizer import DEFAULT_CONFIG, ENCODING, calculate_stat, \
-    gen_report_data, \
-    generate_report, get_config, \
-    get_last_log_data, \
-    get_median, parse_log, get_report_name, report_exists
+from homeworks.lesson01.log_analizer.loganalizer.loganalizer import (DEFAULT_CONFIG, ENCODING, calculate_stat,
+                                                                     gen_report_data, generate_report, get_config,
+                                                                     get_last_log_data, get_median, get_report_name,
+                                                                     parse_log, report_exists)
 
 logging.basicConfig(level=logging.CRITICAL)
 logger = logging.getLogger(__name__)
@@ -29,6 +26,7 @@ class TestLogAnalizer(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.maxDiff = None
+        self.dirname = os.path.dirname(__file__)
 
     def setUp(self) -> None:
         """"""
@@ -56,10 +54,10 @@ class TestLogAnalizer(unittest.TestCase):
             19.486,
         )
         fixtures = [
-            ({'LOG_DIR': 'log'}, False),
-            ({'LOG_DIR': 'log_gz'}, False),
-            ({'LOG_DIR': 'log', 'ERRORS_THRESHOLD': '5%'}, True),
-            ({'LOG_DIR': 'log_gz', 'ERRORS_THRESHOLD': 0.05}, True),
+            ({'LOG_DIR': f'{self.dirname}/log'}, False),
+            ({'LOG_DIR': f'{self.dirname}/log_gz'}, False),
+            ({'LOG_DIR': f'{self.dirname}/log', 'ERRORS_THRESHOLD': '5%'}, True),
+            ({'LOG_DIR': f'{self.dirname}/log_gz', 'ERRORS_THRESHOLD': 0.05}, True),
         ]
 
         for conf, has_error in fixtures:
@@ -99,7 +97,7 @@ class TestLogAnalizer(unittest.TestCase):
             '/api/v2/target/12988/list?status=1': {'count': 3, 'count_perc': 10.714, 'time_sum': 0.011,
                                                    'time_perc': 0.056, 'time_avg': 0.004, 'time_max': 0.005,
                                                    'time_med': 0.003}}
-        config = get_config({'LOG_DIR': 'log'})
+        config = get_config({'LOG_DIR': f'{self.dirname}/log'})
         log_data = get_last_log_data(config)
         parsed_data = parse_log(config, logger, log_data)
         stat = calculate_stat(config, logger, *parsed_data)
@@ -108,9 +106,9 @@ class TestLogAnalizer(unittest.TestCase):
 
     def test_gen_report_data(self):
         fixtures = (
-            ({'LOG_DIR': 'log', 'REPORT_SIZE': 30}, 8, False),
-            ({'LOG_DIR': 'log', 'REPORT_SIZE': 5}, 5, False),
-            ({'LOG_DIR': 'log', 'REPORT_SIZE': 1}, 1, False),
+            ({'LOG_DIR': f'{self.dirname}/log', 'REPORT_SIZE': 30}, 8, False),
+            ({'LOG_DIR': f'{self.dirname}/log', 'REPORT_SIZE': 5}, 5, False),
+            ({'LOG_DIR': f'{self.dirname}/log', 'REPORT_SIZE': 1}, 1, False),
         )
 
         for conf_data, length, err_exp in fixtures:
@@ -128,7 +126,7 @@ class TestLogAnalizer(unittest.TestCase):
 
     def test_generate_report(self):
         fixtures = (
-            {'LOG_DIR': 'log', 'REPORT_SIZE': 100},
+            {'LOG_DIR': f'{self.dirname}/log', 'REPORT_SIZE': 100},
         )
         with tempfile.TemporaryDirectory(prefix='test_') as tmpdir:
             for conf_data in fixtures:
@@ -158,9 +156,9 @@ class TestLogAnalizer(unittest.TestCase):
         regex = re.compile(r'.+\[.+\] "\w+ (?P<url>/?.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
         # regex = re.compile(r'.+ ".+ (?P<url>/.*) HTTP.+" \d{3} \d+ .+" (?P<time>[\d.]+)', re.IGNORECASE)
         configs = [
-            ({'LOG_DIR': 'log'}, open),
-            ({'LOG_DIR': 'log_empty'}, open),
-            ({'LOG_DIR': 'log_gz'}, gzip.open),
+            ({'LOG_DIR': f'{self.dirname}/log'}, open),
+            ({'LOG_DIR': f'{self.dirname}/log_empty'}, open),
+            ({'LOG_DIR': f'{self.dirname}/log_gz'}, gzip.open),
         ]
 
         for config, rdr in configs:
@@ -194,8 +192,8 @@ class TestLogAnalizer(unittest.TestCase):
             ([120, 2000, 354, 543], 448.5),
         ]
 
-        for l, r in fixtures:
-            self.assertEqual(get_median(l), r)
+        for lst, exp_res in fixtures:
+            self.assertEqual(get_median(lst), exp_res)
 
     def test_get_config(self):
 
@@ -204,7 +202,7 @@ class TestLogAnalizer(unittest.TestCase):
             with config_file as fp:
                 fp.write(json.dumps({
                     "REPORT_SIZE": 100,
-                    "LOG_DIR": "./logs",
+                    "LOG_DIR": f"{self.dirname}/logs",
                     'ERRORS_THRESHOLD': '20%',
                     'LOG_LEVEL': 'DEBUG',
                 }))
@@ -215,7 +213,7 @@ class TestLogAnalizer(unittest.TestCase):
                 (f'--config {config_file.name}', {
                     "REPORT_SIZE": 100,
                     "REPORT_DIR": "./reports",
-                    "LOG_DIR": "./logs",
+                    "LOG_DIR": f"{self.dirname}/logs",
                     'ERRORS_THRESHOLD': 0.2,
                     'LOG_LEVEL': 'DEBUG',
                 }, False),
@@ -230,7 +228,7 @@ class TestLogAnalizer(unittest.TestCase):
                     sys.argv.extend(cp.split())
 
                 if is_error:
-                    with self.assertRaises(expected) as ex:
+                    with self.assertRaises(expected):
                         get_config()
                 else:
                     self.assertDictEqual(get_config(), expected)
@@ -251,7 +249,7 @@ class TestLogAnalizer(unittest.TestCase):
 
             try:
                 os.unlink(config_file.name)
-            except:
+            except Exception:
                 pass
 
     def test_get_last_log_data(self):
