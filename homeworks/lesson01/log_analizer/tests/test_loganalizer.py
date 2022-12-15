@@ -192,8 +192,8 @@ class TestLogAnalizer(unittest.TestCase):
             ([120, 2000, 354, 543], 448.5),
         ]
 
-        for l, r in fixtures:
-            self.assertEqual(get_median(l), r)
+        for lst, exp_res in fixtures:
+            self.assertEqual(get_median(lst), exp_res)
 
     def test_get_config(self):
 
@@ -228,7 +228,7 @@ class TestLogAnalizer(unittest.TestCase):
                     sys.argv.extend(cp.split())
 
                 if is_error:
-                    with self.assertRaises(expected) as ex:
+                    with self.assertRaises(expected):
                         get_config()
                 else:
                     self.assertDictEqual(get_config(), expected)
@@ -249,7 +249,7 @@ class TestLogAnalizer(unittest.TestCase):
 
             try:
                 os.unlink(config_file.name)
-            except:
+            except Exception:
                 pass
 
     def test_get_last_log_data(self):

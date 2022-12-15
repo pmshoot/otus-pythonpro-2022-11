@@ -111,6 +111,7 @@ def test_best_wild_hand():
             == ['7C', '7D', '7H', '7S', 'JD'])
     print('OK')
 
+
 if __name__ == '__main__':
     test_best_hand()
     test_best_wild_hand()
