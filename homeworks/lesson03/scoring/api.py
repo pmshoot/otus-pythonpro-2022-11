@@ -9,7 +9,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from optparse import OptionParser
 
-from scoring import get_interests, get_score
+from .scoring import get_interests, get_score
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -40,7 +40,7 @@ ENCODING = 'UTF-8'
 
 class Field(object):
     """"""
-    field_type = str
+    field_type = None
 
     def __init__(self, required=False, nullable=False):
         self.required = required
@@ -56,9 +56,11 @@ class Field(object):
 
 class CharField(Field):
     """"""
+    field_type = str
+
     def check(self, value):
         super().check(value)
-        if not value is None and not isinstance(value, str):
+        if not value is None and not isinstance(value, self.field_type):
             raise ValueError('Ожидалась строка')
 
 
@@ -67,7 +69,7 @@ class ArgumentsField(Field):
 
     def check(self, value):
         super().check(value)
-        if value and not isinstance(value, dict):
+        if value and not isinstance(value, self.field_type):
             raise ValueError('Ожидался словарь')
 
 
@@ -79,12 +81,14 @@ class EmailField(CharField):
 
 
 class PhoneField(Field):
+    field_type = str
     length = 11
     startswith = '7'
 
     def check(self, value):
         super().check(value)
-        if value and not (len(str(value)) == self.length and str(value).startswith(self.startswith)):
+        if value and not (len(self.field_type(value)) == self.length
+                          and self.field_type(value).startswith(self.startswith)):
             raise ValueError(
                 'Ожидалась строка или число длиной %s и первым символом/числом "%s"' % (self.length, self.startswith))
 
@@ -117,14 +121,16 @@ class GenderField(Field):
 
     def check(self, value):
         super().check(value)
-        if value and not value in GENDERS:
+        if value and not (isinstance(value, self.field_type) and value in GENDERS):
             raise ValueError('Ожидалось целое значение из %s' % GENDERS.keys())
 
 
 class ClientIDsField(Field):
-    def check(self, value: list):
+    field_type = (list, tuple)
+
+    def check(self, value):
         super().check(value)
-        if value and not (isinstance(value, list) and len(value) > 0 and all(
+        if value and not (isinstance(value, self.field_type) and len(value) > 0 and all(
                 (isinstance(v, int) for v in value))):
             raise ValueError('Ожидался список с целыми числами')
         else:
@@ -143,19 +149,14 @@ class BaseRequest:
         self._error = None
 
     def __getattribute__(self, item):
-        # empty_value_type_map = {
-        #     str: '',
-        #     int: 0,
-        # }
         if item in ('_fields', '_request_body', '__class__'):
             return object.__getattribute__(self, item)
         if item in self._fields:
             request_body = self._request_body
             if item in request_body:
                 return request_body.get(item)
-            return ''
+            return None
         return object.__getattribute__(self, item)
-        # return object.__getattribute__(self, item)
 
     @property
     def request_body(self):
@@ -173,8 +174,6 @@ class BaseRequest:
         self.context.setdefault('has', [])
         for field in self._fields:
             field_value = self.request_body.get(field)
-            # if field_value:
-            #     self.context['has'].append(field)
             cls_attr: Field = getattr(self.__class__, field)
             if cls_attr.required and field not in self.request_body:
                 self._error = 'Не указано обязательное поле запроса "%s"' % field
@@ -335,6 +334,10 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(r).encode(ENCODING))
         # return
 
+
+# TODO добавить аргументы командной строки и чтение конфига (из прошлого задания)
+# TODO логгирование процесса - info, error, exception
+# TODO комментарии к коду
 
 if __name__ == "__main__":
     op = OptionParser()
