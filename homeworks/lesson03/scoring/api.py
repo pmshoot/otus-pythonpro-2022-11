@@ -9,7 +9,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from optparse import OptionParser
 
-from scoring.scoring import get_interests, get_score
+from scoring import get_interests, get_score
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -35,6 +35,7 @@ GENDERS = {
     MALE: "male",
     FEMALE: "female",
 }
+ENCODING = 'UTF-8'
 
 
 class Field(object):
@@ -54,9 +55,10 @@ class Field(object):
 
 
 class CharField(Field):
+    """"""
     def check(self, value):
         super().check(value)
-        if value and not isinstance(value, str):
+        if not value is None and not isinstance(value, str):
             raise ValueError('Ожидалась строка')
 
 
@@ -76,15 +78,15 @@ class EmailField(CharField):
             raise ValueError('Ожидался email')
 
 
-class PhoneField(CharField):
+class PhoneField(Field):
     length = 11
     startswith = '7'
 
     def check(self, value):
         super().check(value)
-        if value and not len(value) == self.length or not value.startswith(self.startswith):
+        if value and not (len(str(value)) == self.length and str(value).startswith(self.startswith)):
             raise ValueError(
-                'Ожидалась строка длиной %s символов и первым символом "%s"' % (self.length, self.startswith))
+                'Ожидалась строка или число длиной %s и первым символом/числом "%s"' % (self.length, self.startswith))
 
 
 class DateField(Field):
@@ -105,7 +107,8 @@ class BirthDayField(DateField):
 
     def check(self, value):
         super().check(value)
-        if value and datetime.datetime.now() - value > datetime.timedelta(days=self.date_range_years * 365):
+        if value and datetime.datetime.now() - datetime.datetime.strptime(value, self.date_format) > datetime.timedelta(
+                days=self.date_range_years * 365):
             raise ValueError('Ожидалась дата рождения не старше %s лет' % self.date_range_years)
 
 
@@ -121,16 +124,19 @@ class GenderField(Field):
 class ClientIDsField(Field):
     def check(self, value: list):
         super().check(value)
-        if value and not isinstance(value, list) and not len(value) > 0 and not all(
-                (isinstance(v, int) for v in value)):
+        if value and not (isinstance(value, list) and len(value) > 0 and all(
+                (isinstance(v, int) for v in value))):
             raise ValueError('Ожидался список с целыми числами')
+        else:
+            pass
 
 
 class BaseRequest:
     def __init__(self, request: dict = None, ctx: dict = None, store: dict = None):
-        # self._fields = [f for f in dir(self) if not f.startswith('_') and isinstance(getattr(self, f), Field)]
+        self._fields = [f for f in self.__class__.__dict__ if
+                        not f.startswith('_') and isinstance(getattr(self.__class__, f), Field)]
         request = request or {}
-        self._request_body = request.get('body', {})
+        self._request_body = request.get('body', None) or request.get('arguments', {})
         self._request_headers = request.get('headers', {})
         self._context = ctx or {}
         self._store = store or {}
@@ -141,20 +147,15 @@ class BaseRequest:
         #     str: '',
         #     int: 0,
         # }
-        if item in ('_fields', '_request_body', 'startswith'):
-            return super().__getattribute__(item)
+        if item in ('_fields', '_request_body', '__class__'):
+            return object.__getattribute__(self, item)
         if item in self._fields:
             request_body = self._request_body
             if item in request_body:
                 return request_body.get(item)
             return ''
-        return super().__getattribute__(item)
+        return object.__getattribute__(self, item)
         # return object.__getattribute__(self, item)
-
-    @property
-    def _fields(self):
-        return [f for f in self.__class__.__dict__ if
-                not f.startswith('_') and isinstance(getattr(self.__class__, f), Field)]
 
     @property
     def request_body(self):
@@ -172,8 +173,8 @@ class BaseRequest:
         self.context.setdefault('has', [])
         for field in self._fields:
             field_value = self.request_body.get(field)
-            if field_value:
-                self.context['has'].append(field)
+            # if field_value:
+            #     self.context['has'].append(field)
             cls_attr: Field = getattr(self.__class__, field)
             if cls_attr.required and field not in self.request_body:
                 self._error = 'Не указано обязательное поле запроса "%s"' % field
@@ -194,7 +195,6 @@ class ClientsInterestsRequest(BaseRequest):
     def get_response(self):
         response, code = {}, OK
         clients_ids = self.request_body.get('client_ids', [])
-        self.context['nclients'] = len(clients_ids)
         for cid in clients_ids:
             interest = get_interests(None, cid)
             response.setdefault(cid, interest)
@@ -227,7 +227,7 @@ class OnlineScoreRequest(BaseRequest):
         if self._context.get('is_admin', False):
             score = int(ADMIN_SALT)
         else:
-            score = get_score(**self.__dict__)
+            score = get_score(**self.request_body)
         response['score'] = score
         return response, code
 
@@ -241,18 +241,19 @@ class MethodRequest(BaseRequest):
 
     @property
     def is_admin(self):
-        # return self.__dict__['login'] == ADMIN_LOGIN
         return self.login == ADMIN_LOGIN
 
     def get_request_arguments(self):
-        return self.arguments
+        return self.arguments or {}
 
 
 def check_auth(method_request):
     if method_request.is_admin:
-        digest = hashlib.sha512(datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).hexdigest()
+        token = (datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode(encoding=ENCODING)
+        digest = hashlib.sha512(token).hexdigest()
     else:
-        digest = hashlib.sha512(method_request.account + method_request.login + SALT).hexdigest()
+        token = (method_request.account + method_request.login + SALT).encode(encoding=ENCODING)
+        digest = hashlib.sha512(token).hexdigest()
     if digest == method_request.token:
         return True
     return False
@@ -262,24 +263,29 @@ def method_handler(request, ctx, store):
     method_request = MethodRequest(request, ctx, store)
 
     if not method_request.is_valid():
-        response, code = method_request.error, BAD_REQUEST
-    elif not check_auth(method_request):
-        response, code = None, FORBIDDEN
-    elif method_request.method == 'online_score':
+        return method_request.error, INVALID_REQUEST
+
+    if not check_auth(method_request):
+        return None, FORBIDDEN
+
+    method_arguments = method_request.get_request_arguments()
+    args = {"arguments": method_arguments}
+
+    if method_request.method == 'online_score':
+        request_class = OnlineScoreRequest
         ctx['is_admin'] = method_request.is_admin
-        online_score_request = OnlineScoreRequest(method_request.get_request_arguments(), ctx, store)
-        if online_score_request.is_valid():
-            response, code = online_score_request.get_response()
-        else:
-            response, code = online_score_request.error, BAD_REQUEST
+        ctx['has'] = [k for k in method_request.get_request_arguments()]
     elif method_request.method == 'clients_interests':
-        client_interests_request = ClientsInterestsRequest(method_request.get_request_arguments(), ctx, store)
-        if client_interests_request.is_valid():
-            response, code = client_interests_request.get_response()
-        else:
-            response, code = client_interests_request.error, BAD_REQUEST
+        request_class = ClientsInterestsRequest
+        ctx['nclients'] = len(method_arguments.get('client_ids', []))
     else:
-        response, code = None, INVALID_REQUEST
+        return None, INVALID_REQUEST
+
+    _request = request_class(args, ctx, store)
+    if _request.is_valid():
+        response, code = _request.get_response()
+    else:
+        response, code = _request.error, INVALID_REQUEST
 
     return response, code
 
@@ -326,7 +332,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
         context.update(r)
         logging.info(context)
-        self.wfile.write(json.dumps(r))
+        self.wfile.write(json.dumps(r).encode(ENCODING))
         # return
 
 
