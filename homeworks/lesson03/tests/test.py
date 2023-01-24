@@ -3,7 +3,7 @@ import functools
 import hashlib
 import unittest
 
-import scoring.api as api
+from scoring import api
 
 
 def cases(cases):
