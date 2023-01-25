@@ -61,7 +61,7 @@ class CharField(Field):
 
     def check(self, value):
         super().check(value)
-        if not value is None and not isinstance(value, self.field_type):
+        if value is not None and not isinstance(value, self.field_type):
             raise ValueError('Ожидалась строка')
 
 
@@ -80,7 +80,7 @@ class EmailField(CharField):
 
     def check(self, value):
         super().check(value)
-        if value and not '@' in value:
+        if value and '@' not in value:
             raise ValueError('Ожидался email')
 
 
@@ -169,7 +169,7 @@ class BaseRequest:
         # доступ к полям описания через родительский класс экземпляра self.__class__
 
         if item in ('_fields', '_request_body',
-                    '__class__') or not item in self._fields:  # проверка имен для предотвращения рекурсии
+                    '__class__') or item not in self._fields:  # проверка имен для предотвращения рекурсии
             return object.__getattribute__(self, item)
         return self._request_body.get(item, None)
 
@@ -338,7 +338,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         try:
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             request = json.loads(data_string)
-        except:
+        except Exception:
             code = BAD_REQUEST
 
         if request:

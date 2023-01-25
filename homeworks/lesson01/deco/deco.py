@@ -94,6 +94,7 @@ def trace(func):
 
     return wrapper
 
+
 @memo
 @countcalls
 @n_ary
