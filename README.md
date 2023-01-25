@@ -4,6 +4,5 @@
 
 1. [Log parser](homeworks/lesson01/log_analizer/)
 
-   - Deco
-
-   - Poker
+2. [Scoring API](homeworks/lesson03/)
+3. 
