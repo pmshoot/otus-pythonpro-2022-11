@@ -3,7 +3,7 @@ import functools
 import hashlib
 import unittest
 
-from scoring import api
+from homeworks.lesson03.scoring import api
 
 
 def cases(cases):
@@ -23,10 +23,10 @@ class TestSuite(unittest.TestCase):
     def setUp(self):
         self.context = {}
         self.headers = {}
-        self.settings = {}
+        self.store = {}
 
     def get_response(self, request):
-        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.settings)
+        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
 
     def set_valid_auth(self, request):
         encoding = 'UTF-8'

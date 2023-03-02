@@ -244,7 +244,7 @@ class OnlineScoreRequest(BaseRequest):
         if self._context.get('is_admin', False):
             score = int(ADMIN_SALT)
         else:
-            score = get_score(**self.request_body)
+            score = get_score(self._store, **self.request_body)
         response['score'] = score
         return response, code
 
