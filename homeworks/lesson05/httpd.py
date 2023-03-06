@@ -42,7 +42,7 @@ extensions_map = _encodings_map_default = {
 
 
 def date_time_string(timestamp=None):
-    """"""
+    """Форматирование даты для представления в заголовке"""
     if not timestamp:
         timestamp = time.time()
     dt = datetime.datetime.fromtimestamp(timestamp)
@@ -64,7 +64,7 @@ def date_time_string(timestamp=None):
 
 
 class HTTPServer:
-    """"""
+    """Реализация простого HTTP сервера"""
     server_version = "OTUServer/0.1"
     address_family = socket.AF_INET
     socket_type = socket.SOCK_STREAM
@@ -72,20 +72,28 @@ class HTTPServer:
     timeout = None
 
     def __init__(self, address: tuple[str, int], **kwargs):
-        """"""
+        """
+        - address: Параметры сокета адрес:порт
+        - kwargs:
+            - root_dir: полный или относительный (от файла) путь к каталогу с файлами
+            - workers: количество процессов-обработчиков запросов, по-умолчанию 1
+            - logger: объект логгера
+            -
+        """
         self.address = self.get_address(*address)
         self.socket = socket.socket(self.address_family, self.socket_type)
         self.is_shut_down = threading.Event()
         self.shutdown_request = False
+        self.root_dir = kwargs.get('root_dir', DEFAULT_DOCUMENT_ROOT)
         self.workers = kwargs.get('workers', DEFAULT_WORKERS)
         self.logger = kwargs.get('logger') or logging.getLogger('httpd')
         self._threads = []
         self.request_queue = queue.Queue(maxsize=self.workers)
-        self.root_dir = kwargs.get('root_dir', DEFAULT_DOCUMENT_ROOT)
         self.handler_class = RequestHandler
         self.activate()
 
     def activate(self):
+        """Запуск процесса сервера"""
         if self.allow_reuse_address:
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.address)
@@ -93,10 +101,10 @@ class HTTPServer:
         self.server_name = socket.gethostbyaddr(host)
         self.server_port = port
         self.socket.listen(self.workers)
-        # self.socket.listen(4)
         self.logger.info(f'{self.server_version} listen at {host}:{port}')
 
     def shutdown(self):
+        """Остановка сервера"""
         self.logger.debug('Get shutdown event')
         self.is_shut_down.set()
         for _ in range(self.workers):
@@ -110,6 +118,7 @@ class HTTPServer:
         self.logger.info(f'{self.server_version} stopped')
 
     def get_address(self, *args):
+        """Определение IP адреса хоста, на котором запущен сервер"""
         infos = socket.getaddrinfo(*args)
         for family, type, proto, canonname, sockaddr in infos:
             if family == socket.AF_INET and type == socket.SOCK_STREAM:
@@ -117,6 +126,7 @@ class HTTPServer:
         raise ValueError('Не определен тип сокета')
 
     def serve_forever(self):
+        """Запуск процессов обработчиков запросов"""
         self.is_shut_down.clear()
         for th in range(self.workers):
             t = threading.Thread(target=self._process_request_thread)
@@ -130,13 +140,15 @@ class HTTPServer:
                 break
             try:
                 conn = self.socket.accept()
-            except:
+            except Exception as err:
+                self.logger.error(err)
                 pass
             else:
                 if conn:
                     self.request_queue.put(conn)
 
     def _process_request_thread(self):
+        """Для передачи в тред"""
         try:
             handler = self.handler_class(self)
             handler.process()
@@ -145,8 +157,8 @@ class HTTPServer:
 
 
 class RequestHandler:
-    """"""
-    protocol_version = 'HTTP/1.1'
+    """Обработчик HTTP запросов"""
+    protocol_version = 'HTTP/1.0'
     default_error_content_type = "text/html;charset=utf-8"
     rbufsize = -1
     wbufsize = 0
@@ -169,9 +181,8 @@ class RequestHandler:
     </html>
     """
 
-    # def __init__(self, sock: socket, client_addr, server):
-    def __init__(self, server):
-        self.tname = str(id(self))[6:]
+    def __init__(self, server: HTTPServer):
+        self.tname = str(id(self))[6:]  # имя обработчика
         self.server = server
         self.client_addr = None
         self.rfile = None
@@ -184,11 +195,11 @@ class RequestHandler:
         self.request_path = ""
         self.request_headers = {}
         self.logger: logging.Logger = server.logger.getChild(f'w-{id(self)}')
-        # self.logger.setLevel(logging.WARNING)
 
     def process(self):
-        rqueue: queue.Queue = self.server.request_queue
-        sevent = self.server.is_shut_down
+        """Запуск обработки запросов из очереди в цикле"""
+        rqueue: queue.Queue = self.server.request_queue  # очередь запросов
+        sevent = self.server.is_shut_down  # event завершения работы сервера
         sock: socket.socket
         while True:
             try:
@@ -215,21 +226,17 @@ class RequestHandler:
                 pass
 
     def handle_request(self):
-        """"""
+        """Обработка полученного запроса, определение метода обработки (GET, HEAD)"""
         try:
             self.raw_request = self.rfile.readline(self.max_request_line_size + 1)
-            if not self.raw_request:
+            if not self.raw_request:  # нет данных в сокете
                 return
 
-            if len(self.raw_request) > self.max_request_line_size:
-                self.request = ""
-                self.request_version = ""
-                self.request_command = ""
-                self.request_headers = {}
+            if len(self.raw_request) > self.max_request_line_size:  # превышен макс. размер заголовка
                 self.send_error(*BAD_REQUEST)
                 return
 
-            if not self.parse_request():
+            if not self.parse_request():  # нет данных парсинга запроса
                 return
 
             caddr, cport = self.client_addr
@@ -242,14 +249,14 @@ class RequestHandler:
                 return
 
             handle_method = getattr(self, self.request_command.lower())
-            handle_method()
-            self.wfile.flush()
+            handle_method()  # GET or HEAD
+            self.wfile.flush()  # финальный этап - отправка данных в сокет клиенту
 
         except Exception as err:
             self.logger.error(err)
 
     def send_error(self, code, message=None, explain=None):
-        """"""
+        """Формирование и отправка ответа об ошибке"""
         content = (self.error_message % {
             'code': code,
             'message': message or '???',
@@ -267,7 +274,7 @@ class RequestHandler:
         self.wfile.flush()
 
     def init_headers(self, code, message='', explain=''):
-        """"""
+        """Формирование основных заголовков ответа"""
         self.headers_buffer.append(
                 ("%s %d %s\r\n" % (self.protocol_version, code, message)).encode('latin-1', 'strict')
         )
@@ -275,18 +282,18 @@ class RequestHandler:
         self.add_header('Date', date_time_string())
 
     def add_header(self, keyword: str, value: str):
-        """"""
+        """Добавление заголовка в ответ"""
         self.headers_buffer.append(
                 ("%s: %s\r\n" % (keyword, value)).encode('latin-1', 'strict'))
 
     def end_headers(self):
-        """"""
+        """Завершение формирования заголовков и отправка в сокет клиенту"""
         self.headers_buffer.append(b"\r\n")
         self.wfile.write(b"".join(self.headers_buffer))
         self.headers_buffer = []
 
     def parse_request(self):
-        """"""
+        """Разбор запроса"""
         request = str(self.raw_request, 'iso-8859-1')
         request = request.rstrip('\r\n')
         self.request = request
@@ -303,7 +310,7 @@ class RequestHandler:
                 if len(version_number) != 2:
                     raise ValueError
                 version_number = int(version_number[0]), int(version_number[1])
-            except (ValueError, IndexError):
+            except (ValueError, IndexError):  # мы не умеем http/2.0
                 self.send_error(
                         *BAD_REQUEST[:2],
                         "Bad request version (%r)" % version,
@@ -325,8 +332,8 @@ class RequestHandler:
 
         self.request_command, self.request_path = words[:2]
 
-        if self.request_path.startswith('//'):
-            self.request_path = '/' + self.request_path.lstrip('/')  # Reduce to a single /
+        if self.request_path.startswith('//'):  # Reduce to a single /
+            self.request_path = '/' + self.request_path.lstrip('/')
 
         try:
             self._read_headers(self.rfile)
@@ -339,7 +346,7 @@ class RequestHandler:
         return True
 
     def _read_headers(self, fp):
-        """"""
+        """Чтение заголовков из сокета"""
         headers = []
         while True:
             line = fp.readline(self.max_request_line_size + 1)
@@ -358,7 +365,7 @@ class RequestHandler:
             self.request_headers[value[0]] = value[1]
 
     def get(self):
-        """"""
+        """Обработчик команды GET - формируем заголовки и тело ответа"""
         f = self.make_response()
         if f:
             try:
@@ -367,13 +374,13 @@ class RequestHandler:
                 f.close()
 
     def head(self):
-        """"""
+        """Обработчик команды HEAD - формируем только заголовки"""
         f = self.make_response()
         if f:
             f.close()
 
     def make_response(self):
-        """"""
+        """Формирование файла с телом ответа"""
         path = self.translate_path(self.request_path)
         f = None
         if os.path.isdir(path):
@@ -405,15 +412,16 @@ class RequestHandler:
             except Exception as err:
                 if f:
                     f.close()
-                self.send_error(
-                        *INTERNAL_SERVER_ERROR[:2],
-                        str(err)  # todo ошибку в лог, в ответ общее описание
-                )
+                self.logger.error(err)
+                self.send_error(*INTERNAL_SERVER_ERROR)
         else:
             self.send_error(*NOT_FOUND)
 
     def translate_path(self, path: str):
-        """"""
+        """Обработчик пути запроса
+        - замена кодов %xx на соответствующие символы
+        - определение, формирование и очистка пути к файлу
+        """
         path = path.split('?', 1)[0]
         path = path.split('#', 1)[0]
         has_trailing_slash = path.rstrip().endswith('/')
@@ -433,15 +441,15 @@ class RequestHandler:
                 except KeyError:
                     res.append(b'%')
                     res.append(chunk)
+            # decode string
             path = (b''.join(res)).decode('utf-8')
 
-        #
         path = posixpath.normpath(path)
         words = path.split('/')
         words = filter(None, words)
         spath = os.path.abspath(self.server.root_dir)
         for word in words:
-            if os.path.dirname(word) or word in (os.curdir, os.pardir):
+            if os.path.dirname(word) or word in (os.curdir, os.pardir):  # очистка от "\.\", "\..\"
                 continue
             spath = os.path.join(spath, word)
         if has_trailing_slash:
@@ -449,7 +457,7 @@ class RequestHandler:
         return spath
 
     def get_mime_type(self, path):
-        """"""
+        """Определение типа файла по расширению"""
         _, ext = posixpath.splitext(path)
         return extensions_map.get(ext.lower(), 'application/octet-stream')
 
