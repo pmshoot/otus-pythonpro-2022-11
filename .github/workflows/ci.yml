@@ -22,4 +22,4 @@ jobs:
       - name: Run linter
         run: flake8 --extend-ignore=E501 homeworks
       - name: Run tests with pytest
-        run: pytest .
+        run: pytest --no-header --no-summary -q -W ignore::DeprecationWarning .
