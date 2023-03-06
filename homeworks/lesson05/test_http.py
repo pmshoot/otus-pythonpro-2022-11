@@ -1,6 +1,10 @@
 #!/usr/bin/env python
-
+import logging
+import os
 import sys
+from threading import Thread
+
+from httpd import HTTPServer as HttpdServer
 
 v3 = sys.version_info[0] == 3
 
@@ -16,7 +20,29 @@ import unittest
 
 class HttpServer(unittest.TestCase):
     host = "localhost"
-    port = 80
+    port = 8000
+    server = None
+    thread = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger('httpd')
+        path = os.path.dirname(__file__)
+        cls.server = HttpdServer((HttpServer.host, HttpServer.port), root_dir=path, workers=5, logger=logger)
+        cls.thread = Thread(target=cls.server.serve_forever)
+        try:
+            cls.thread.start()
+        except:
+            pass
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        try:
+            cls.server.shutdown()
+        except:
+            pass
+        cls.thread.join()
 
     def setUp(self):
         self.conn = httplib.HTTPConnection(self.host, self.port, timeout=10)
@@ -319,22 +345,20 @@ class HttpServer(unittest.TestCase):
         self.assertEqual(len(data), 35344)
         self.assertEqual(ctype, "application/x-shockwave-flash")
 
-
-loader = unittest.TestLoader()
-suite = unittest.TestSuite()
-a = loader.loadTestsFromTestCase(HttpServer)
-suite.addTest(a)
-
-
-class NewResult(unittest.TextTestResult):
-    def getDescription(self, test):
-        doc_first_line = test.shortDescription()
-        return doc_first_line or ""
-
-
-class NewRunner(unittest.TextTestRunner):
-    resultclass = NewResult
-
-
-runner = NewRunner(verbosity=2)
-runner.run(suite)
+# loader = unittest.TestLoader()
+# suite = unittest.TestSuite()
+# a = loader.loadTestsFromTestCase(HttpServer)
+# suite.addTest(a)
+#
+#
+# class NewResult(unittest.TextTestResult):
+#     def getDescription(self, test):
+#         doc_first_line = test.shortDescription()
+#         return doc_first_line or ""
+#
+#
+# class NewRunner(unittest.TextTestRunner):
+#     resultclass = NewResult
+#
+# runner = NewRunner(verbosity=2)
+# runner.run(suite)
