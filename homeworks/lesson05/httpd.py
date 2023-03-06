@@ -125,17 +125,16 @@ class HTTPServer:
 
         for t in self._threads:
             t.start()
-        r = 0
         while True:
-            r += 1
             if self.is_shut_down.is_set():
                 break
-            conn = self.socket.accept()
-            if conn:
-                # self.logger.debug(f'qstart: {r} ' + 10*'-')
-                # self.logger.debug(f'qsize : {self.request_queue.qsize()}')
-                self.request_queue.put(conn)
-                # self.logger.debug(f'qe: {r}')
+            try:
+                conn = self.socket.accept()
+            except:
+                pass
+            else:
+                if conn:
+                    self.request_queue.put(conn)
 
     def _process_request_thread(self):
         try:
