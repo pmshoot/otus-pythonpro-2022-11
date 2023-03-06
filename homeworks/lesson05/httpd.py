@@ -1,10 +1,9 @@
 import argparse
 import datetime
-import io
 import logging
 import os
 import posixpath
-import re
+import queue
 import shutil
 import socket
 import threading
@@ -69,7 +68,7 @@ class HTTPServer:
     server_version = "OTUServer/0.1"
     address_family = socket.AF_INET
     socket_type = socket.SOCK_STREAM
-    allow_reuse_address = False
+    allow_reuse_address = True
     timeout = None
 
     def __init__(self, address: tuple[str, int], **kwargs):
@@ -80,32 +79,11 @@ class HTTPServer:
         self.shutdown_request = False
         self.workers = kwargs.get('workers', DEFAULT_WORKERS)
         self.logger = kwargs.get('logger') or logging.getLogger('httpd')
-        # self._threads = []
-
+        self._threads = []
+        self.request_queue = queue.Queue(maxsize=self.workers)
         self.root_dir = kwargs.get('root_dir', DEFAULT_DOCUMENT_ROOT)
         self.handler_class = RequestHandler
-
         self.activate()
-
-    def __del__(self):
-        self.close()
-
-    def close(self):
-        try:
-            # self.logger.debug(f'shutdown socket: {self.socket.shutdown(socket.SHUT_WR)}')
-            # self.logger.debug(f'close socket: {self.socket.close()}')
-            self.socket.close()
-            self.logger.info(f'{self.server_version} stopped')
-        except Exception as err:
-            logger.error(f'exception on close socket: {err}')
-            pass
-
-    def get_address(self, *args):
-        infos = socket.getaddrinfo(*args)
-        for family, type, proto, canonname, sockaddr in infos:
-            if family == socket.AF_INET and type == socket.SOCK_STREAM:
-                return sockaddr
-        raise ValueError('Не определен тип сокета')
 
     def activate(self):
         if self.allow_reuse_address:
@@ -114,49 +92,65 @@ class HTTPServer:
         host, port = self.address
         self.server_name = socket.gethostbyaddr(host)
         self.server_port = port
-        # self.socket.listen(self.workers)
-        self.socket.listen(1)
+        self.socket.listen(self.workers)
+        # self.socket.listen(4)
         self.logger.info(f'{self.server_version} listen at {host}:{port}')
+
+    def shutdown(self):
+        self.logger.debug('Get shutdown event')
+        self.is_shut_down.set()
+        for _ in range(self.workers):
+            self.request_queue.put_nowait(None)
+        self.request_queue.join()
+        self.is_shut_down.wait()
+        for t in self._threads:
+            t.join()
+        self.socket.shutdown(socket.SHUT_RDWR)
+        self.socket.close()
+        self.logger.info(f'{self.server_version} stopped')
+
+    def get_address(self, *args):
+        infos = socket.getaddrinfo(*args)
+        for family, type, proto, canonname, sockaddr in infos:
+            if family == socket.AF_INET and type == socket.SOCK_STREAM:
+                return sockaddr
+        raise ValueError('Не определен тип сокета')
 
     def serve_forever(self):
         self.is_shut_down.clear()
-        try:
-            while not self.shutdown_request:
-                # if self.shutdown_request:
-                #     break
-                self.process_request(*self.socket.accept())
-        finally:
-            self.shutdown_request = False
-            self.is_shut_down.set()
+        for th in range(self.workers):
+            t = threading.Thread(target=self._process_request_thread)
+            t.daemon = False
+            self._threads.append(t)
 
-    def shutdown(self):
-        self.shutdown_request = True
-        self.close()
-        # self.is_shut_down.wait()
+        for t in self._threads:
+            t.start()
+        r = 0
+        while True:
+            r += 1
+            if self.is_shut_down.is_set():
+                break
+            conn = self.socket.accept()
+            if conn:
+                # self.logger.debug(f'qstart: {r} ' + 10*'-')
+                # self.logger.debug(f'qsize : {self.request_queue.qsize()}')
+                self.request_queue.put(conn)
+                # self.logger.debug(f'qe: {r}')
 
-    def _process_request_thread(self, sock, client_addr):
+    def _process_request_thread(self):
         try:
-            self.handler_class(sock, client_addr, self)
+            handler = self.handler_class(self)
+            handler.process()
         except Exception as e:
-            print(e)
-            # self.handle_error(sock, client_addr)
-
-    def process_request(self, sock, client_addr):
-        saddr, sport = client_addr
-        self.logger.info(f'Accepted connection from {saddr}:{sport}')
-        t = threading.Thread(target=self._process_request_thread,
-                             args=(sock, client_addr))
-        t.daemon = True
-        # self._threads.append(t)
-        t.start()
+            self.logger.error(e)
 
 
 class RequestHandler:
     """"""
     protocol_version = 'HTTP/1.1'
     default_error_content_type = "text/html;charset=utf-8"
-    rbufsize = None
-    wbufsize = None
+    rbufsize = -1
+    wbufsize = 0
     max_request_line_size = 64 * 1024
     max_headers = 100
     index_files = "index.html", "index.htm"
@@ -176,54 +170,56 @@ class RequestHandler:
     </html>
     """
 
-    def __init__(self, sock: socket, client_addr, server):
-        self.sock = sock
-        self.client_addr = client_addr
+    # def __init__(self, sock: socket, client_addr, server):
+    def __init__(self, server):
+        self.tname = str(id(self))[6:]
         self.server = server
-
-        self.rfile = self.sock.makefile('rb', self.rbufsize)
-        self.wfile = self.sock.makefile('wb', self.wbufsize)
-
+        self.client_addr = None
+        self.rfile = None
+        self.wfile = None
         self.headers_buffer = []
-        self.close_conn = False
         self.raw_request = None
         self.request = ""
         self.request_version = ""
         self.request_command = ""
         self.request_path = ""
         self.request_headers = {}
-        self.logger = server.logger.getChild(f'w-{id(self)}')
-
-        self.process()
-
-    def __del__(self):
-        if self.wfile:
-            self.wfile.close()
-            # self.logger.debug('closed socket.wfile')
-        if self.rfile:
-            self.rfile.close()
-            # self.logger.debug('closed socket.rfile')
-
-
+        self.logger: logging.Logger = server.logger.getChild(f'w-{id(self)}')
+        # self.logger.setLevel(logging.WARNING)
 
     def process(self):
-        try:
-            while not self.close_conn:
-                self.handle_request()
-        finally:
-            if not self.wfile.closed:
+        rqueue: queue.Queue = self.server.request_queue
+        sevent = self.server.is_shut_down
+        sock: socket.socket
+        while True:
+            try:
+                if sevent.is_set():
+                    self.logger.debug(f'{self.tname} - Shutdown')
+                    break
+                conn = rqueue.get()
+                if conn is None:
+                    if sevent.is_set():
+                        self.logger.debug(f'{self.tname} - Queue shutdown')
+                    rqueue.task_done()
+                    break
+                sock, self.client_addr = conn
+                self.rfile = sock.makefile('rb', self.rbufsize)
+                self.wfile = sock.makefile('wb', self.wbufsize)
                 try:
-                    self.wfile.flush()
-                except socket.error:
-                    pass
+                    self.handle_request()
+                finally:
+                    rqueue.task_done()
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
+            except Exception as err:
+                self.logger.error(f'{self.tname} - {err}')
+                pass
 
     def handle_request(self):
         """"""
         try:
             self.raw_request = self.rfile.readline(self.max_request_line_size + 1)
-            self.logger.debug(f'w-{id(self)} get request: {self.raw_request.decode()}')
             if not self.raw_request:
-                self.close_conn = True
                 return
 
             if len(self.raw_request) > self.max_request_line_size:
@@ -235,23 +231,23 @@ class RequestHandler:
                 return
 
             if not self.parse_request():
-                self.close_conn = True
                 return
 
+            caddr, cport = self.client_addr
+            msg = f'{caddr}:{cport} - {self.request}'
+            if self.logger.isEnabledFor(logging.DEBUG):
+                msg = f'{self.tname}: {msg}'
+            self.logger.info(msg)
             if self.request_command.lower() not in ALLOWED_REQUESTS:
                 self.send_error(*METHOD_NOT_ALLOWED)
                 return
 
             handle_method = getattr(self, self.request_command.lower())
             handle_method()
+            self.wfile.flush()
 
-            try:
-                self.wfile.flush()
-            except socket.error:
-                pass
-
-        except socket.timeout:
-            self.close_conn = True
+        except Exception as err:
+            self.logger.error(err)
 
     def send_error(self, code, message=None, explain=None):
         """"""
@@ -284,12 +280,6 @@ class RequestHandler:
         self.headers_buffer.append(
                 ("%s: %s\r\n" % (keyword, value)).encode('latin-1', 'strict'))
 
-        if keyword.lower() == 'connection':
-            if value.lower() == 'close':
-                self.close_conn = True
-            elif value.lower() == 'keep-alive':
-                self.close_conn = False
-
     def end_headers(self):
         """"""
         self.headers_buffer.append(b"\r\n")
@@ -298,7 +288,6 @@ class RequestHandler:
 
     def parse_request(self):
         """"""
-        self.close_conn = True
         request = str(self.raw_request, 'iso-8859-1')
         request = request.rstrip('\r\n')
         self.request = request
@@ -321,8 +310,6 @@ class RequestHandler:
                         "Bad request version (%r)" % version,
                 )
                 return False
-            if version_number >= (1, 1) and self.protocol_version >= "HTTP/1.1":
-                self.close_conn = False
             if version_number >= (2, 0):
                 self.send_error(
                         *BAD_REQUEST[:2],
@@ -350,13 +337,6 @@ class RequestHandler:
                     str(err),
             )
             return False
-
-        conn_type = self.request_headers.get('Connection', "")
-        if conn_type.lower() == 'close':
-            self.close_conn = True
-        elif (conn_type.lower() == 'keep-alive' and
-              self.protocol_version >= "HTTP/1.1"):
-            self.close_conn = False
         return True
 
     def _read_headers(self, fp):
