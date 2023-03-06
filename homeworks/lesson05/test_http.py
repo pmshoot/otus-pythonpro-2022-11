@@ -32,8 +32,8 @@ class HttpServer(unittest.TestCase):
         cls.thread = Thread(target=cls.server.serve_forever)
         try:
             cls.thread.start()
-        except:
-            pass  # noqa
+        except:  # noqa
+            pass
 
     @classmethod
     def tearDownClass(cls) -> None:
