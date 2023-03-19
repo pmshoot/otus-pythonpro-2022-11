@@ -37,7 +37,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'account',
     'hasker',
 ]
 
@@ -56,8 +55,9 @@ ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
+        'DIRS': ["templates"],
+        'APP_DIRS': False,
+        # 'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
@@ -134,5 +134,9 @@ MEDIA_URL = "media/"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 #
-AUTH_USER_MODEL = "account.User"
+AUTH_USER_MODEL = "hasker.User"
 FIRST_DAY_OF_WEEK = 1
+
+HASKER_TREND_QUERYSET_COUNT = 10
+LOGOUT_REDIRECT_URL = 'index'
+LOGIN_REDIRECT_URL = 'index'

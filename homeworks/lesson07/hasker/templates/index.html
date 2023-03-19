@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block main %}
+  {% for object in page_obj %}
+    <div class="row">
+      <div class="col-1 small text-center">
+        <div>{{ object.rating }}</div>
+        <div class="small">Rating</div>
+      </div>
+      <div class="col-1 small text-center">
+        <div>{{ object.answers.count }}</div>
+        <div class="small">Ответов</div>
+      </div>
+      <div class="col ml-4">
+        <div><a href="{% url 'question_detail' object.pk %}">{{ object.title }}</a></div>
+        <div>
+          <div class="small clearfix">
+            {% if object.tag.exists %}
+              <div>
+                <ul class="inline">
+                  {% for tag in object.tag.all %}
+                    <li class="badge">{{ tag }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endif %}
+            <div class="text-end small">
+              <div><a href="{% url 'index' %}?s=author:{{ object.author.username }}">{{ object.author }}</a></div>
+              <div class="small">вопрос задан {{ object.created_at|timesince }} назад</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <hr>
+  {% endfor %}
+  {% include 'pager_inc.html' %}
+{% endblock %}

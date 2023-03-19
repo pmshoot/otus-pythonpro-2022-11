@@ -4,6 +4,7 @@ from django.db import models
 
 def get_upload_path():
     """"""
+    return 'media/'
 
 
 class User(AbstractUser):
@@ -13,7 +14,7 @@ class User(AbstractUser):
 
     Username and password are required. Other fields are optional.
     """
-    avatar = models.FileField(upload_to=get_upload_path)
+    avatar = models.FileField('Аватар', upload_to=get_upload_path, null=True, blank=True)
     is_deleted = models.BooleanField(default=False)
 
     class Meta(AbstractUser.Meta):
