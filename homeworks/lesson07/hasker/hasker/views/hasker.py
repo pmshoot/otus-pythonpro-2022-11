@@ -1,13 +1,17 @@
 from random import random
 
+from django.conf import settings
+from django.contrib.auth.decorators import login_required
+from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
-from hasker.forms import QuestionForm, QuestionNewAnswerForm
-from hasker.models import Answer, Question, Vote
+from hasker.forms import AnswerForm, QuestionForm
+from hasker.models import Answer, Question, Tag, Vote
 
 # class TrendingMixing:  # todo заменить на middleware или templatetag
 #     """"""
@@ -15,37 +19,67 @@ from hasker.models import Answer, Question, Vote
 #     #     trend_list = Question.objects.trend_queryset()
 #     #     kwargs['trend_list'] = trend_list
 #     #     return super().get_context_data(object_list=object_list, **kwargs)
-OBJECTS_ON_PAGE = 2
+QUESTIONS_ON_PAGE = 20
+ANSWERS_ON_PAGE = 30
+SEND_ANSWER_NOTIFY = getattr(settings, 'HASKER_SEND_ANSWER_NOTIFY', True)
 
 
 def index(request):
-    objects_list = Question.objects.order_by('-created_at')
-    paginator = Paginator(objects_list, OBJECTS_ON_PAGE)
+    query = request.GET.get('q', '')
+    if query:
+        # split
+        q = query.split(':')
+        if len(q) > 1:
+            attr, value = q
+            if attr == 'tag':
+                filter = Q(tags__title=value.lower())
+            elif attr == 'author':
+                filter = Q(author__username=value)
+            # elif attr == '...':
+            #     filter = Q(...)
+            else:
+                filter = Q()
+        else:
+            value = q[0]
+            filter = Q(title__contains=value) | Q(text__contains=value)
+        objects_list = Question.objects.filter(filter)
+    else:
+        objects_list = Question.objects.all()
+
+    order = request.GET.get('o', 'new')
+    if order == 'hot':
+        objects_list = objects_list.order_by('-rating')
+    else:
+        objects_list = objects_list.order_by('-created_at')
+
+    paginator = Paginator(objects_list, QUESTIONS_ON_PAGE)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    context = {
-        'page_obj': page_obj,
-        'object_list': page_obj,
-        'paginator': paginator
-    }
-    context['is_paginated'] = True if page_obj.has_other_pages() else False
+    context = {'page_obj': page_obj, 'object_list': page_obj, 'paginator': paginator, 'query': query,
+               'order': order, 'is_paginated': True if page_obj.has_other_pages() else False}
     return render(request, 'index.html', context)
 
 
+@login_required
 def ask(request):
-    if not request.user.is_authenticated:
-        url = reverse('login') + f"?next={reverse('ask')}"
-        return HttpResponseRedirect(url)
+    # if not request.user.is_authenticated:
+    #     url = reverse('login') + f"?next={reverse('ask')}"
+    #     return HttpResponseRedirect(url)
 
     if request.method == 'GET':
         form = QuestionForm()
         return render(request, 'question_create.html', context={'form': form})
     elif request.method == 'POST':
         """"""
-        form = QuestionForm(request.POST)
-        object = form.save(commit=False)
-        object.author = request.user
-        object.save()
+        with transaction.atomic():
+            form = QuestionForm(request.POST)
+            object: Question = form.save(commit=False)
+            object.author = request.user
+            object.save()
+            tag_list = form.cleaned_data.get('tag', '').split(',')
+            for tag_name in tag_list[:3]:
+                tag, _ = Tag.objects.get_or_create(title=tag_name.strip().lower())
+                object.tags.add(tag)
         url = reverse('question_detail', kwargs={'pk': object.pk})
         return HttpResponseRedirect(url)
 
@@ -72,7 +106,7 @@ def question_detail(request, *args, **kwargs):
         context['is_paginated'] = False
 
     if request.method == 'POST' and request.user.is_authenticated:
-        form = QuestionNewAnswerForm(request.POST)
+        form = AnswerForm(request.POST)
         if not form.is_valid():
             context.update({'form': form})
             return render(request, 'question_detail.html', context=context)
@@ -81,14 +115,31 @@ def question_detail(request, *args, **kwargs):
             ###
             from django.utils.lorem_ipsum import words
             count = int(random() * 100)
-            Answer.objects.create(
+            new_answer = Answer.objects.create(
                     question=object,
                     # text=answer,
                     text=words(count),
                     author=request.user,
             )
+            if SEND_ANSWER_NOTIFY and object.author.email:
+                message = f"""
+                Новый ответ на вопрос "{object.title}":
+                
+                {new_answer.text}
+                
+                Перейти к ответу: {request.META['HTTP_ORIGIN']}{new_answer.get_absolute_url()}
+                """
+
+                send_mail(
+                        'Новый ответ на Hasker',
+                        message,
+                        'hasker@mail.com',
+                        [object.author.email],
+                        fail_silently=True,
+                )
+
             return HttpResponseRedirect(reverse('question_detail', args=(object.pk,)))
-    form = QuestionNewAnswerForm()
+    form = AnswerForm()
     context.update({'form': form})
     return render(request, 'question_detail.html', context=context)
 
@@ -115,8 +166,8 @@ def _question_rating_handle(request, question):
     action = request.GET.get('rating')
     if action not in ('up', 'down'):
         return
-    object = question
     attr = 'question'
+    object = question
     answer_pk = request.GET.get('answer')
     if answer_pk:
         try:
@@ -124,8 +175,9 @@ def _question_rating_handle(request, question):
         except Answer.DoesNotExist:
             return
         else:
-            object = answer
             attr = 'answer'
+            object = answer
+
     request_data = {'author': request.user,
                     attr: object}
 
@@ -136,7 +188,7 @@ def _question_rating_handle(request, question):
                 object.rating += 1
                 object.save()
             else:
-                Vote.objects.filter(**request_data).delete()
+                Vote.objects.get(**request_data).delete()
                 object.rating -= 1
                 if object.rating < 0:
                     object.rating = 0

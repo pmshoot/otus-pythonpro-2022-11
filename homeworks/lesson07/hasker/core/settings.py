@@ -27,6 +27,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['127.0.0.1']
 
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Application definition
 
@@ -123,7 +124,7 @@ STATIC_URL = 'static/'
 
 # Absolute filesystem path to the directory that will hold user-uploaded files.
 # Example: "/var/www/example.com/media/"
-MEDIA_ROOT = ""
+MEDIA_ROOT = BASE_DIR / 'media'
 # URL that handles the media served from MEDIA_ROOT.
 # Examples: "http://example.com/media/", "http://media.example.com/"
 MEDIA_URL = "media/"
@@ -134,9 +135,15 @@ MEDIA_URL = "media/"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 #
-AUTH_USER_MODEL = "hasker.User"
+# AUTH_USER_MODEL = "hasker.User"
 FIRST_DAY_OF_WEEK = 1
 
-HASKER_TREND_QUERYSET_COUNT = 10
 LOGOUT_REDIRECT_URL = 'index'
 LOGIN_REDIRECT_URL = 'index'
+
+# Hasker
+# Кол-во вопросов в правом блоке с наивысшим рейтингом
+HASKER_TREND_QUERYSET_COUNT = 10
+
+# Отсылать уведомления инициатору вопроса о новом ответе
+# HASKER_SEND_ANSWER_NOTIFY = True

@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.urls import reverse
 
 from hasker.models.managers import QuestionManager
 
@@ -18,13 +19,13 @@ class Question(BaseModel):
     """Вопросы"""
     title = models.CharField('Заголовок', help_text='Краткое описание вопроса', max_length=254, db_index=True)
     text = models.TextField('Содержание', help_text='Суть вопроса')
-    tag = models.ManyToManyField('Tag', related_name='questions', blank=True)
+    tags = models.ManyToManyField('Tag', related_name='questions', blank=True)
     author = models.ForeignKey(AUTH_USER, verbose_name='Автор', on_delete=models.PROTECT, related_name='questions')
 
     objects = QuestionManager()
 
     def get_answers(self):
-        return self.answers.order_by('-is_right', 'created_at')
+        return self.answers.order_by('-is_right', '-rating', 'created_at')
 
 
 class Answer(BaseModel):
@@ -36,6 +37,9 @@ class Answer(BaseModel):
 
     def __str__(self):
         return self.text
+
+    def get_absolute_url(self):
+        return reverse('question_detail', args=(self.pk,))
 
 
 class Tag(models.Model):

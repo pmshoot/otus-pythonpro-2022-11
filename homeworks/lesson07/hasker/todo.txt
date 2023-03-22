@@ -1,2 +1,3 @@
-#todo middleware или templatetag для вставки в context_data данные по тренду вопросов
-#todo как правильно считать тренд
+#todo API
+#todo makefile для сборки
+#todo tests

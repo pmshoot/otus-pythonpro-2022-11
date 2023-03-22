@@ -1,60 +1,97 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.core.exceptions import ValidationError
+from django.core.files.images import get_image_dimensions
 
 from hasker.models import Question
+from hasker.models.account import UserProfile
 
 AUTH_USER = get_user_model()
 
 
-class QuestionForm(forms.ModelForm):
+class BootstrapMixin:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for visible in self.visible_fields():
             visible.field.widget.attrs['class'] = 'form-control'
+
+
+class QuestionForm(BootstrapMixin, forms.ModelForm):
+    tag = forms.CharField(label='Теги', help_text='Не более 3-х тегов')
 
     class Meta:
         model = Question
-        fields = ('title', 'text', 'tag')
+        fields = ('title', 'text')
         widgets = {
-            # 'text': forms.Textarea(attrs={'rows': 10}),
-            # 'title': forms.TextInput(attrs={'class': 'form-control'}),
             'text': forms.Textarea(attrs={'rows': 5}),
-            # 'text': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
             'tag': forms.TextInput,
         }
 
+    def clean_text(self):
+        text = self.cleaned_data['text']
+        if len(text.split(',')) > 3:
+            raise ValidationError('Не более 3-х тегов на вопрос')
+        return text
 
-class RegisterUser(UserCreationForm):
+
+# class ProfileUserForm(forms.ModelForm):
+#     class Meta:
+#         model = AUTH_USER
+#         fields = ('email', 'avatar')
+
+
+class AnswerForm(BootstrapMixin, forms.Form):
+    answer = forms.CharField(label='Ответ', widget=(forms.Textarea(attrs={'required': True, 'rows': 5})))
+
+
+class RegisterUserForm(BootstrapMixin, UserCreationForm):
+    class Meta(UserCreationForm.Meta):
+        model = AUTH_USER
+        fields = ('username', 'email')
+
+
+class UpdateUserForm(BootstrapMixin, UserChangeForm):
+    password = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for visible in self.visible_fields():
-            visible.field.widget.attrs['class'] = 'form-control'
+        self.fields['username'].widget.attrs['readonly'] = True
 
-    class Meta(UserCreationForm.Meta):
-        model = AUTH_USER
-        fields = ('username', 'email', 'avatar')
-        # widgets = {
-        #     'password': forms.PasswordInput,
-        # }
+    class Meta(UserChangeForm.Meta):
+        fields = ('username', 'email',)
+
+
+class UserProfileForm(BootstrapMixin, forms.ModelForm):
+    class Meta:
+        model = UserProfile
+        fields = ('avatar',)
 
     def clean_avatar(self):
         avatar = self.cleaned_data['avatar']
+        if avatar:
+            try:
+                w, h = get_image_dimensions(avatar)
+                # validate dimensions
+                max_width = max_height = 1000
+                if w > max_width or h > max_height:
+                    raise forms.ValidationError(
+                            u'Please use an image that is '
+                            '%s x %s pixels or smaller.' % (max_width, max_height))
+                # validate content type
+                main, sub = avatar.content_type.split('/')
+                if not (main == 'image' and sub in ['jpg', 'jpeg', 'pjpeg', 'gif', 'png']):
+                    raise forms.ValidationError(u'Please use a JPEG, '
+                                                'GIF or PNG image.')
+                # validate file size
+                if len(avatar) > (120 * 1024):
+                    raise forms.ValidationError(
+                            u'Avatar file size may not exceed 20k.')
+            except AttributeError:
+                """
+                Handles case when we are updating the user profile
+                and do not supply a new avatar
+                """
+                pass
         return avatar
-
-
-class ProfileUser(forms.ModelForm):
-    class Meta:
-        model = AUTH_USER
-        fields = ('email', 'avatar')
-
-
-class QuestionNewAnswerForm(forms.Form):
-    answer = forms.CharField(label='Ответ', widget=(forms.Textarea(attrs={'required': True, 'rows': 5})))
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for visible in self.visible_fields():
-            visible.field.widget.attrs['class'] = 'form-control'

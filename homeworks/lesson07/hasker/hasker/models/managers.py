@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-TREND_QUERYSET_COUNT = getattr(settings, 'HASKER_TREND_QUERYSET_COUNT', 10)
+TREND_QUERYSET_COUNT = getattr(settings, 'HASKER_TREND_QUERYSET_COUNT', 20)
 
 
 class QuestionManager(models.Manager):

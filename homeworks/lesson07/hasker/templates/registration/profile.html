@@ -1,4 +1,18 @@
 {% extends 'base.html' %}
 {% block main %}
-  Профиль
+  <div class="container">
+    <div class="row">
+      <div class="col-auto">
+        <div class="card card body p-3 w-75">
+          <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {% include 'form_user_inc.html' %}
+            <div class="d-grid my-2">
+              <button type="submit" class="btn btn-primary">Применить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 {% endblock %}

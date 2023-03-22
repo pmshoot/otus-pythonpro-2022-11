@@ -13,6 +13,8 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import include, path
 
 from hasker.views import account, hasker
@@ -20,6 +22,7 @@ from hasker.views import account, hasker
 urlpatterns = [
     path('', hasker.index, name='index'),
     path('ask/', hasker.ask, name='ask'),
+    # path('search/', hasker.search, name='search'),
     # path('search/', hasker.QuestionSearch.as_view()),
     # path('tag/<str: tag>/', hasker.QuestionSearch.as_view()),
     #
@@ -38,3 +41,5 @@ urlpatterns = [
 
     # path('admin/', admin.site.urls),
 ]
+
+urlpatterns = urlpatterns + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
