@@ -1,3 +1,2 @@
 #todo API
 #todo makefile для сборки
-#todo tests

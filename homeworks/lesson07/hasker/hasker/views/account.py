@@ -31,7 +31,7 @@ def profile(request, *args, **kwargs):
         p_form = UserProfileForm(request.POST, request.FILES, instance=request.user.profile)
         if u_form.is_valid() and p_form.is_valid():
             if u_form.has_changed():
-                user = u_form.save()
+                u_form.save()
             if p_form.has_changed():
                 profile = p_form.save(commit=False)
                 profile.save()

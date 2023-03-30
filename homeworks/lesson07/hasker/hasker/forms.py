@@ -4,8 +4,8 @@ from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.core.exceptions import ValidationError
 from django.core.files.images import get_image_dimensions
 
-from hasker.models import Question
 from hasker.models.account import UserProfile
+from hasker.models.hasker import Question
 
 AUTH_USER = get_user_model()
 
@@ -19,7 +19,7 @@ class BootstrapMixin:
 
 
 class QuestionForm(BootstrapMixin, forms.ModelForm):
-    tag = forms.CharField(label='Теги', help_text='Не более 3-х тегов')
+    tag = forms.CharField(label='Теги', help_text='Не более 3-х тегов', required=False)
 
     class Meta:
         model = Question
@@ -29,17 +29,11 @@ class QuestionForm(BootstrapMixin, forms.ModelForm):
             'tag': forms.TextInput,
         }
 
-    def clean_text(self):
-        text = self.cleaned_data['text']
+    def clean_tag(self):
+        text = self.cleaned_data['tag']
         if len(text.split(',')) > 3:
             raise ValidationError('Не более 3-х тегов на вопрос')
         return text
-
-
-# class ProfileUserForm(forms.ModelForm):
-#     class Meta:
-#         model = AUTH_USER
-#         fields = ('email', 'avatar')
 
 
 class AnswerForm(BootstrapMixin, forms.Form):
@@ -81,7 +75,7 @@ class UserProfileForm(BootstrapMixin, forms.ModelForm):
                             '%s x %s pixels or smaller.' % (max_width, max_height))
                 # validate content type
                 main, sub = avatar.content_type.split('/')
-                if not (main == 'image' and sub in ['jpg', 'jpeg', 'pjpeg', 'gif', 'png']):
+                if not (main == 'image' and sub in ['jpg', 'jpeg', 'gif', 'png']):
                     raise forms.ValidationError(u'Please use a JPEG, '
                                                 'GIF or PNG image.')
                 # validate file size

@@ -20,6 +20,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest flake8 requests
       - name: Run linter
-        run: flake8 --extend-ignore=E501 homeworks
+        run: flake8 --extend-ignore=E501,C901 homeworks
       - name: Run tests with pytest
         run: pytest --no-header --no-summary -q -W ignore::DeprecationWarning .

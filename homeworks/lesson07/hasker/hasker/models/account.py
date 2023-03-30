@@ -6,8 +6,11 @@ from django.dispatch import receiver
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    avatar = models.ImageField('Аватар', upload_to='images/profile', max_length=500, blank=True)
-    is_deleted = models.BooleanField(default=False)
+    avatar = models.ImageField('Аватар',
+                               upload_to='images/profile',
+                               max_length=500,
+                               default='images/profile/default.jpg',
+                               blank=True)
 
 
 @receiver(post_save, sender=User)

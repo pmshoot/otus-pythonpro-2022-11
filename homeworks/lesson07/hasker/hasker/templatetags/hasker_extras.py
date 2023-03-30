@@ -1,6 +1,6 @@
 from django import template
 
-from hasker.models import Question
+from hasker.models.hasker import Question
 
 register = template.Library()
 
