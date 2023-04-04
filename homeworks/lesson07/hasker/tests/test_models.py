@@ -52,6 +52,7 @@ class TestQuestionModel(TestCase):
         self.assertEqual(q1.title, 'question1')
         self.assertEqual(q1.text, 'lorem ipsum dolor')
         self.assertEqual(q1.author, user1)
+        self.assertFalse(q1.tags.exists(), 'no tags!')
 
 
 class TestAnswerModel(TestCase):

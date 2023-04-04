@@ -65,8 +65,9 @@ def ask(request):
             object.save()
             tag_list = form.cleaned_data.get('tag', '').split(',')
             for tag_name in tag_list[:3]:
-                tag, _ = Tag.objects.get_or_create(title=tag_name.strip().lower())
-                object.tags.add(tag)
+                if tag_name:
+                    tag, _ = Tag.objects.get_or_create(title=tag_name.strip().lower())
+                    object.tags.add(tag)
         url = reverse('question_detail', kwargs={'pk': object.pk})
         return HttpResponseRedirect(url)
     return HttpResponseBadRequest
