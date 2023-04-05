@@ -9,7 +9,7 @@ docker run --rm -it -p 8000:80 ubuntu:stable /bin/bash
 ```
 2. клонируется репозиторий 
 ```shell
-git clone <ваш гит>
+git clone https://github.com/pmshoot/otus-pythonpro-2022-11/tree/main/homeworks/lesson07
 ```
 3. заходим в директорию проекта 
 ```shell
