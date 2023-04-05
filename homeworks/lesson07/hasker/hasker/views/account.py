@@ -10,21 +10,21 @@ AUTH_USER = get_user_model()
 
 
 def register(request, *args, **kwargs):
+    """Страница регистрации нового пользователя"""
     if request.method == 'POST':
         """save new user"""
         form = RegisterUserForm(request.POST)
-        # p_form = UserProfileForm(request.POST)
         if form.is_valid():
             form.save()
             return HttpResponseRedirect(reverse('login'))
     else:
         form = RegisterUserForm()
-        # p_form = UserProfileForm()
     return render(request, 'registration/register.html', context={'form': form})
 
 
 @login_required
 def profile(request, *args, **kwargs):
+    """Страница профиля пользователя"""
     if request.method == 'POST':
         """save changed user profile"""
         u_form = UpdateUserForm(request.POST, instance=request.user)

@@ -11,7 +11,7 @@ AUTH_USER = get_user_model()
 
 
 class BootstrapMixin:
-
+    """Установка классов css для форм"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for visible in self.visible_fields():
@@ -19,6 +19,7 @@ class BootstrapMixin:
 
 
 class QuestionForm(BootstrapMixin, forms.ModelForm):
+    """Форма создания вопроса"""
     tag = forms.CharField(label='Теги', help_text='Не более 3-х тегов', required=False)
 
     class Meta:
@@ -37,16 +38,19 @@ class QuestionForm(BootstrapMixin, forms.ModelForm):
 
 
 class AnswerForm(BootstrapMixin, forms.Form):
+    """Форма создания ответа"""
     answer = forms.CharField(label='Ответ', widget=(forms.Textarea(attrs={'required': True, 'rows': 5})))
 
 
 class RegisterUserForm(BootstrapMixin, UserCreationForm):
+    """Форма регистрации нового пользователя"""
     class Meta(UserCreationForm.Meta):
         model = AUTH_USER
         fields = ('username', 'email')
 
 
 class UpdateUserForm(BootstrapMixin, UserChangeForm):
+    """Форма изменения данных пользователя"""
     password = None
 
     def __init__(self, *args, **kwargs):
@@ -63,6 +67,10 @@ class UserProfileForm(BootstrapMixin, forms.ModelForm):
         fields = ('avatar',)
 
     def clean_avatar(self):
+        """
+        max size: 1000x1000px
+        available ext: jpeg, png, gif
+        """
         avatar = self.cleaned_data['avatar']
         if avatar:
             try:

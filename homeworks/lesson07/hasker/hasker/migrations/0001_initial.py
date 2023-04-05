@@ -17,8 +17,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
                 name='Answer',
                 fields=[
-                    (
-                    'id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                    ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                     ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')),
                     ('rating', models.PositiveIntegerField(default=0, editable=False, verbose_name='Рейтинг')),
                     ('text', models.TextField(verbose_name='Содержание ответа')),
@@ -33,8 +32,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
                 name='Question',
                 fields=[
-                    (
-                    'id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                    ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                     ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')),
                     ('rating', models.PositiveIntegerField(default=0, editable=False, verbose_name='Рейтинг')),
                     ('title', models.CharField(db_index=True, help_text='Краткое описание вопроса', max_length=254,
@@ -50,16 +48,14 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
                 name='Tag',
                 fields=[
-                    (
-                    'id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                    ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                     ('title', models.CharField(max_length=48, unique=True, verbose_name='Тэг')),
                 ],
         ),
         migrations.CreateModel(
                 name='Vote',
                 fields=[
-                    (
-                    'id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                    ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                     ('answer', models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE,
                                                  related_name='answer_votes', to='hasker.answer')),
                     ('author',
@@ -71,8 +67,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
                 name='UserProfile',
                 fields=[
-                    (
-                    'id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                    ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                     ('avatar', models.ImageField(blank=True, default='images/profile/default.jpg', max_length=500,
                                                  upload_to='images/profile', verbose_name='Аватар')),
                     ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='profile',

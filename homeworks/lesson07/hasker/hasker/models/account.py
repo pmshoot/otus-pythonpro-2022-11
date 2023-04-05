@@ -5,6 +5,10 @@ from django.dispatch import receiver
 
 
 class UserProfile(models.Model):
+    """Профиль пользователя
+
+    - аватар (jpeg, png, gif)
+    """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     avatar = models.ImageField('Аватар',
                                upload_to='images/profile',
@@ -17,7 +21,3 @@ class UserProfile(models.Model):
 def create_or_update_user_profile(sender, instance: User, created, **kwargs):
     if created:
         UserProfile.objects.get_or_create(user=instance)
-
-# @receiver(post_save, sender=User)
-# def save_profile(sender, instance, **kwargs):
-#     instance.profile.save()

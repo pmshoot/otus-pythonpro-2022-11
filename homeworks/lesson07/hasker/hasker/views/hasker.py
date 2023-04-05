@@ -17,33 +17,34 @@ SEND_ANSWER_NOTIFY = getattr(settings, 'HASKER_SEND_ANSWER_NOTIFY', True)
 
 
 def index(request):
+    """Главная страница сайта"""
     query = request.GET.get('q', '')
     if query:
-        # split
+        # фильтр вопросов по автору, тегу, ...
         q = query.split(':')
         if len(q) > 1:
             attr, value = q
             if attr == 'tag':
-                filter = Q(tags__title=value.lower())
+                qs_filter = Q(tags__title=value.lower())
             elif attr == 'author':
-                filter = Q(author__username=value)
+                qs_filter = Q(author__username=value)
             # elif attr == '...':
             #     filter = Q(...)
             else:
-                filter = Q()
+                qs_filter = Q()
         else:
             value = q[0]
-            filter = Q(title__contains=value) | Q(text__contains=value)
-        objects_list = Question.objects.filter(filter)
+            qs_filter = Q(title__contains=value) | Q(text__contains=value)
+        objects_list = Question.objects.filter(qs_filter)
     else:
         objects_list = Question.objects.all()
-
+    # сортировка вопросов по рейтингу-дате создания
     order = request.GET.get('o', 'new')
     if order == 'hot':
         objects_list = objects_list.order_by('-rating')
     else:
         objects_list = objects_list.order_by('-created_at')
-
+    # paging
     paginator = Paginator(objects_list, QUESTIONS_ON_PAGE)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -54,36 +55,38 @@ def index(request):
 
 @login_required
 def ask(request):
+    """Страница создания вопроса"""
     if request.method == 'GET':
         form = QuestionForm()
         return render(request, 'question_create.html', context={'form': form})
     elif request.method == 'POST':
         with transaction.atomic():
             form = QuestionForm(request.POST)
-            object: Question = form.save(commit=False)
-            object.author = request.user
-            object.save()
+            question: Question = form.save(commit=False)
+            question.author = request.user
+            question.save()
             tag_list = form.cleaned_data.get('tag', '').split(',')
             for tag_name in tag_list[:3]:
                 if tag_name:
                     tag, _ = Tag.objects.get_or_create(title=tag_name.strip().lower())
-                    object.tags.add(tag)
-        url = reverse('question_detail', kwargs={'pk': object.pk})
+                    question.tags.add(tag)
+        url = reverse('question_detail', kwargs={'pk': question.pk})
         return HttpResponseRedirect(url)
     return HttpResponseBadRequest
 
 
 def question_detail(request, *args, **kwargs):
+    """Страница просмотра вопроса и ответов на него. Добавление ответа"""
     context = {}
     pk = kwargs.get('pk')
-    object = get_object_or_404(Question, pk=pk)
+    question = get_object_or_404(Question, pk=pk)
     if request.user.is_authenticated:
-        _question_rating_handle(request, object)  # обработка установки рэйтинга
-    answers = object.get_answers()
+        _question_rating_handle(request, question)  # обработка установки рэйтинга
+    answers = question.get_answers()
     paginator = Paginator(answers, 5)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    context.update({'object': object,
+    context.update({'object': question,
                     'answers': page_obj,
                     'page_obj': page_obj,
                     'paginator': paginator,
@@ -101,13 +104,13 @@ def question_detail(request, *args, **kwargs):
         answer = form.cleaned_data.get('answer')
         if answer:
             new_answer = Answer.objects.create(
-                    question=object,
+                    question=question,
                     text=answer,
                     author=request.user,
             )
-            if SEND_ANSWER_NOTIFY and object.author.email:
+            if SEND_ANSWER_NOTIFY and question.author.email:
                 message = f"""
-                Новый ответ на вопрос "{object.title}":
+                Новый ответ на вопрос "{question.title}":
 
                 {new_answer.text}
 
@@ -118,18 +121,18 @@ def question_detail(request, *args, **kwargs):
                         'Новый ответ на Hasker',
                         message,
                         'hasker@mail.com',
-                        [object.author.email],
+                        [question.author.email],
                         fail_silently=True,
                 )
 
-            return HttpResponseRedirect(reverse('question_detail', args=(object.pk,)))
+            return HttpResponseRedirect(reverse('question_detail', args=(question.pk,)))
     form = AnswerForm()
     context.update({'form': form})
     return render(request, 'question_detail.html', context=context)
 
 
 def _question_rating_handle(request, question):
-    """"""
+    """Обработчик выставления рейтинга вопросов/ответов, выбора правильного ответа"""
     answer_pk = request.GET.get('right_answer')
     action = request.GET.get('rating')
     # Обработка установки правильного ответа инициатором вопроса
