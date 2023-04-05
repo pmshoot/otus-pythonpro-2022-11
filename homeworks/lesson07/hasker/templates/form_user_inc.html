@@ -1,0 +1,52 @@
+{# user form #}
+{% if u_form.non_field_errors %}
+  <div class="alert alert-danger bg-danger" role="alert">
+    {% for error in u_form.non_field_errors %}
+      <p{% if forloop.last %} class="mb-0 text-light"{% endif %}>{{ error }}</p>
+    {% endfor %}
+  </div>
+{% endif %}
+{% for field in u_form %}
+  <div class="p-2">
+    <div class="form-label">{{ field.label_tag }}</div>
+    {{ field }}
+    {% for error in field.errors %}
+      <div class="text-danger small">
+        {{ error }}
+      </div>
+    {% endfor %}
+    {% if field.help_text %}
+      <div class="form-text text-muted small">
+        * {{ field.help_text|safe }}
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{# profile form #}
+{% if p_form.non_field_errors %}
+  <div class="alert alert-danger bg-danger" role="alert">
+    {% for error in p_form.non_field_errors %}
+      <p{% if forloop.last %} class="mb-0 text-light"{% endif %}>{{ error }}</p>
+    {% endfor %}
+  </div>
+{% endif %}
+{% for field in p_form %}
+  <div class="p-2">
+    <div class="form-label">{{ field.label_tag }}</div>
+    {% if user.profile.avatar %}
+      <img src="{{ MEDIA_URL }}{{ user.profile.avatar.url }}" height=100 width=100 alt="">
+    {% endif %}
+    {{ field }}
+    {% for error in field.errors %}
+      <div class="text-danger small">
+        {{ error }}
+      </div>
+    {% endfor %}
+    {% if field.help_text %}
+      <div class="form-text text-muted small">
+        * {{ field.help_text|safe }}
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}

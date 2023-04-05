@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block main %}
+  <div class="mb-2 small">
+    {% if order == 'hot' %}
+      <span>
+      <a href="{% url 'index' %}?o=new{% if query %}&q={{ query }}{% endif %}">новые</a>
+      </span> |
+      <span>
+      <b>в тренде</b>
+      </span>
+    {% else %}
+      <span>
+      <b>новые</b>
+    </span> |
+      <span>
+      <a href="{% url 'index' %}?o=hot{% if query %}&q={{ query }}{% endif %}">в тренде</a>
+    </span>
+    {% endif %}
+  </div>
+  {% for object in page_obj %}
+    <div class="row">
+      <div class="col-1 small text-center">
+        <div>{{ object.rating }}</div>
+        <div class="small">Rating</div>
+      </div>
+      <div class="col-1 small text-center">
+        <div>{{ object.answers.count }}</div>
+        <div class="small">Ответов</div>
+      </div>
+      <div class="col ml-4">
+        <div>
+          <a href="{% url 'question_detail' object.pk %}">{{ object.title }}</a>
+        </div>
+        <div>
+          <div class="small clearfix">
+            <div class="float-start">
+              {% if object.tags.exists %}
+                <div>
+                  {% for tag in object.tags.all %}
+                    <span class="small ">
+                      <a href="{% url 'index' %}?q=tag:{{ tag }}{% if order %}&o={{ order }}{% endif %}">#{{ tag }}</a>
+                    </span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="text-end small">
+              <div>
+                {% if object.author.profile.avatar %}
+                  <img src="{{ MEDIA_URL }}{{ object.author.profile.avatar.url }}" height=20 width=20>
+                {% endif %}
+                <a href="{% url 'index' %}?q=author:{{ object.author.username }}{% if order %}&o={{ order }}{% endif %}"
+                >{{ object.author }}
+                </a>
+              </div>
+              <div class="small">вопрос задан {{ object.created_at|timesince }} назад</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <hr>
+  {% endfor %}
+  {% include 'pager_inc.html' %}
+{% endblock %}

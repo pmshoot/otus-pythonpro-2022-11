@@ -1,0 +1,78 @@
+{% load hasker_extras %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Title</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css"
+        integrity="sha512-SzlrxWUlpfuzQ+pcUCosxcglQRNAq/DZjVsC0lE40xsADsfeQoEypE+enwcOiGjk/bSuGGKHEyjSoQ1zVisanQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"/>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN"
+          crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/js/all.min.js"
+          integrity="sha512-2bMhOkE/ACz21dJT8zBOMgMecNxx0d37NND803ExktKiKdSzdwn+L7i9fdccw/3V06gM/DBWKbYmQvKMdAA9Nw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+<div class="container">
+  <div class="row">
+    <div class="p-3">
+      <div class="row">
+        <div class="col-2">
+          <h4><a class="text-black" style="text-decoration: none" href="/">Hasker</a></h4>
+        </div>
+        <div class="col">
+          <form action="{% url 'index' %}" method="get">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text" id="id_search">
+                <button type="submit" class="btn p-0 dtn-sm btn-light">🔍</button></span>
+              <input class="form-control" type="text" name="q" id="id_search" aria-label="найти..."
+                  {% if query %} value="{{ query }}"{% endif %}
+                     aria-describedby="id_search" placeholder="найти...">
+            </div>
+          </form>
+        </div>
+        <div class="col-2 text-end">
+          {% if user.is_authenticated %}
+            {% if user.profile.avatar %}
+              <img class="mx-1" src="{{ MEDIA_URL }}{{ user.profile.avatar.url }}" height=30 width=30>
+            {% endif %}
+            <a href="{% url 'profile' %}">
+              <span class="px-1">{{ user.username }}</span>
+            </a>
+            <a href="{% url 'logout' %}" title="Выйти"><i class="fas fa-right-from-bracket"></i></a>
+          {% else %}
+            <a href="{% url 'login' %}" title="Войти"><i class="fas fa-right-to-bracket"></i></a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <hr>
+  <div class="row">
+    <div class="col-9">{% block main %}{% endblock %}</div>
+    <div class="col-3">
+      {% block rightbar %}
+        {% if user.is_authenticated %}
+          <a href="{% url 'ask' %}" class="btn btn-primary btn-sm d-block">Задать вопрос</a>
+        {% endif %}
+        <div class="my-4 text-start">
+          <h5 class="text-center">В тренде</h5>
+          {% get_trends as trends %}
+          {% for trend in trends %}
+            <div class=" p-1">
+              <div class="badge bg-primary">{{ trend.rating }}</div>
+              <span><a href="{% url 'question_detail' trend.pk %}"
+                       title="{{ trend.title }}">{{ trend.title|truncatechars:40 }}</a></span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endblock %}
+    </div>
+  </div>
+</div>
+</body>
+</html>

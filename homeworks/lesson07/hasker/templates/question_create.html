@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block main %}
+  <h5>Задать вопрос</h5>
+  {% if form %}
+    <form action="" method="post">
+      {% csrf_token %}
+      {% for field in form %}
+        <div class="col-auto mb-3">
+          <label class="form-label" for="id_{{ field.name }}">{{ field.label }}</label>
+          {#          <input class="form-control" type="text" id="id_{{ field.name }}" aria-describedby="id_{{ field.name }}_help">#}
+          {{ field }}
+          <div id="id_{{ field.name }}_help" class="form-text">{{ field.help_text }}</div>
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary">Отправить</button>
+    </form>
+  {% endif %}
+{% endblock %}
